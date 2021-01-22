@@ -17,8 +17,11 @@ func InitConn(redisHost string , redisPort string)redis.Conn{
 func redisDo(commandName string, args ...interface{})(reply interface{}, err error){
 	zlib.MyPrint("redisDo init:",commandName,args)
 	res,err := redisConn.Do(commandName,args... )
+	if err != nil{
+		zlib.ExitPrint("redis do has err",err.Error())
+	}
 	//reflect.ValueOf(res).IsNil(),reflect.ValueOf(res).Kind(),reflect.TypeOf(res)
-	zlib.MyPrint("redisDo exec ,res : ",res," err :",err)
+	//zlib.MyPrint("redisDo exec ,res : ",res," err :",err)
 	return res,err
 }
 
@@ -33,7 +36,8 @@ func redisDelAllByPrefix(prefix string){
 		return
 	}
 	for _,v := range res{
-		redisDo("del",v)
+		res,_ :=redisDo("del",v)
+		zlib.MyPrint("del one player status : ",res)
 	}
 }
 

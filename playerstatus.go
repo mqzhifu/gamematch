@@ -82,32 +82,47 @@ func (playerStatus *PlayerStatus) GetOne(player Player)PlayerStatusElement{
 	playerStatusElement := &PlayerStatusElement{}
 	zlib.MapCovertStruct(tmp,playerStatusElement)
 
-	hasSignTimeout := playerStatus.CheckSignTimeout(*playerStatusElement)
-	if hasSignTimeout{
-		//newPlayerStatusElement := *playerStatusElement
-		//newPlayerStatusElement.SignTimeout = 0
-		//newPlayerStatusElement.SuccessTimeout = 0
-		//newPlayerStatusElement.Status = PlayerStatusNotExist
-		//playerStatus.upInfo(*playerStatusElement)
-		//上面是走更新流程，不删除这个KEY，但得加一个：NONE 状态，下面是直接删除redis key，更新结构体状态，略简单
-		playerStatusElement.Status = PlayerStatusNotExist
-		playerStatusElement.SignTimeout = 0
-		playerStatusElement.SuccessTimeout = 0
-		playerStatus.delOne(*playerStatusElement)
-	}
-	//zlib.MyPrint(playerStatusElement)
-
 	return *playerStatusElement
 }
-
-//
-func (playerStatus *PlayerStatus) CheckSignTimeout(playerStatusElement PlayerStatusElement)bool{
-	now := getNowTime()
-	if(now >= playerStatusElement.SignTimeout){
-		return true
-	}
-	return false
+func (playerStatus *PlayerStatus)signTimeoutUpInfo(player Player){
+	zlib.MyPrint("signTimeoutUpInfo",player.Id)
+	playerStatusElement := playerStatus.GetOne(player)
+	playerStatus.delOne(playerStatusElement)
 }
+func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement PlayerStatusElement)(isTimeout bool,isClear bool){
+	now := getNowTime()
+	if(now < playerStatusElement.SignTimeout){
+		return true,false
+	}
+	zlib.MyPrint("sign timeout : need delete one group...")
+	//zlib.MyPrint("playerStatus.CheckSignTimeout : ",hasSignTimeout)
+	groupInfo := queueSign.getGroupElementById(rule,playerStatusElement.GroupId)
+	if groupInfo.GroupPerson > 1{
+		return true,false
+	}
+	//newPlayerStatusElement := *playerStatusElement
+	//newPlayerStatusElement.SignTimeout = 0
+	//newPlayerStatusElement.SuccessTimeout = 0
+	//newPlayerStatusElement.Status = PlayerStatusNotExist
+	//playerStatus.upInfo(*playerStatusElement)
+	//上面是走更新流程，不删除这个KEY，但得加一个：NONE 状态，下面是直接删除redis key，更新结构体状态，略简单
+	//playerStatusElement.Status = PlayerStatusNotExist
+	//playerStatusElement.SignTimeout = 0
+	//playerStatusElement.SuccessTimeout = 0
+	queueSign.delOneRuleOneGroup(rule,playerStatusElement.GroupId)
+	playerStatus.delOne(playerStatusElement)
+	//zlib.MyPrint(playerStatusElement)
+	return true,true
+}
+
+////
+//func (playerStatus *PlayerStatus) CheckSignTimeout(playerStatusElement PlayerStatusElement)bool{
+//	now := getNowTime()
+//	if(now >= playerStatusElement.SignTimeout){
+//		return true
+//	}
+//	return false
+//}
 //
 func  (playerStatus *PlayerStatus)  upInfo(playerStatusElement PlayerStatusElement,newPlayerStatusElement PlayerStatusElement)(bool ,error){
 	fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
@@ -165,12 +180,15 @@ func StructCovertStr(playerStatusElement interface{})string{
 
 func (playerStatus *PlayerStatus)  delOne(playerStatusElement PlayerStatusElement){
 	key := playerStatus.getRedisKey(playerStatusElement.PlayerId)
-	redisDo("del",key)
+	res,_ := redisDo("del",key)
+	zlib.MyPrint("playerStatus delOne",res)
 }
 //删除所有玩家状态值
 func  (playerStatus *PlayerStatus)  delAllPlayers(){
+	zlib.MyPrint("delAllPlayers ")
 	key := playerStatus.GetCommonRedisPrefix()
 	keys := key + "*"
 	redisDelAllByPrefix(keys)
+
 }
 

@@ -6,7 +6,11 @@ import (
 	"strconv"
 	"strings"
 )
-
+const(
+	RuleFlagTeamVS = 1
+	RuleFlagCollectPerson = 2
+	RuleGroupPersonMax = 5
+)
 //匹配规则 - 配置 ,像： 附加属性
 type Rule struct {
 	Id 				int
@@ -17,9 +21,10 @@ type Rule struct {
 	IsSupportGroup 	int		//保留字段，是否支持，以组为单位报名，疑问：所有的类型按说都应该支持这以组为单位的报名
 	Flag			int 	//匹配机制-类型，目前两种：1. N（TEAM） VS N（TEAM）  ，  2. N人够了就行(吃鸡模式)
 	PersonCondition	int		//触发 满足人数的条件,即匹配成功,必须 flag = 2 ，该变量才有用
-	TeamPerson		int		//如果是N VS N 的类型，得确定 每个队伍几个人,必须上面的flag = 1 ，该变量才有用
-	PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，组/队伍的自定义权重不支持
-	TeamNumber		int		//保留字段，还没想好，初衷：正常就是一个队伍跟一个队列PK，但是可能会有多队伍互相PK，不一定是N V N
+	TeamVSPerson	int		//如果是N VS N 的类型，得确定 每个队伍几个人,必须上面的flag = 1 ，该变量才有用,目前最大是5
+	TeamVSNumber	int		//保留字段，还没想好，初衷：正常就是一个队伍跟一个队列PK，但是可能会有多队伍互相PK，不一定是N V N
+	PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，如果是小组/团队，是计算平均值
+	groupPersonMax	int		//玩家以组为单位，一个小组最大报名人数,暂定最大为：5
 }
 
 type PlayerWeight struct {
@@ -50,9 +55,12 @@ func   NewRuleConfig ()*RuleConfig{
 	}
 	obj.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
-	if len(res) <= 0 {
-		zlib.ExitPrint("RuleConfig is null")
+	if AddRuleFlag == 0{
+		if len(res) <= 0 {
+			zlib.ExitPrint("RuleConfig is null")
+		}
 	}
+
 
 	//mapKey := 0
 	for k,v := range res{
@@ -65,6 +73,7 @@ func   NewRuleConfig ()*RuleConfig{
 }
 
 func (ruleConfig *RuleConfig)strToStruct(redisStr string)Rule{
+
 	strArr := strings.Split(redisStr,separation)
 	element := Rule{
 		Id 				:	zlib.Atoi(strArr[0]),
@@ -75,13 +84,16 @@ func (ruleConfig *RuleConfig)strToStruct(redisStr string)Rule{
 		PersonCondition :	zlib.Atoi(strArr[5]),
 		IsSupportGroup 	:	zlib.Atoi(strArr[6]),
 		Flag 			:	zlib.Atoi(strArr[7]),
-		TeamPerson 		:	zlib.Atoi(strArr[8]),
+		TeamVSPerson 		:	zlib.Atoi(strArr[8]),
+		groupPersonMax : zlib.Atoi(strArr[9]),
 		//WeightRule 		:	strArr[0],
 	}
 	return element
 }
 
 func (ruleConfig *RuleConfig)structToStr(rule Rule)string{
+	//groupPersonMax	int		//玩家以组为单位，一个小组最大报名人数,暂定最大为：5
+
 	str := strconv.Itoa(rule.Id) + separation +
 		strconv.Itoa(rule.AppId) + separation +
 		rule.CategoryKey + separation +
@@ -90,7 +102,9 @@ func (ruleConfig *RuleConfig)structToStr(rule Rule)string{
 		strconv.Itoa(rule.PersonCondition) + separation +
 		strconv.Itoa(rule.IsSupportGroup) + separation +
 		strconv.Itoa(rule.Flag) + separation +
-		strconv.Itoa(rule.TeamPerson) + separation
+		strconv.Itoa(rule.TeamVSPerson) + separation +
+		strconv.Itoa(rule.groupPersonMax)
+
 		//rule.WeightRule + separation
 	return str
 }
@@ -111,14 +125,25 @@ func (ruleConfig *RuleConfig) getIncId( ) (int){
 	return res
 }
 
-func (ruleConfig *RuleConfig) AddOne(rule Rule){
+func (ruleConfig *RuleConfig) AddOne(rule Rule)int{
+	if rule.groupPersonMax > RuleGroupPersonMax {
+		zlib.ExitPrint("小组最大人数：",RuleGroupPersonMax)
+	}
+
+	if rule.groupPersonMax <= 0 {
+		zlib.ExitPrint("小组最大人数不能 <= 0 ")
+	}
 	ruleOld ,ok := ruleConfig.Data[rule.Id]
 	if ok{
 		zlib.MyPrint("rule confg add one err,id has exist",ruleOld.Id)
 	}
 	key := ruleConfig.getRedisKey()
-	//total,_ := redis.Int( redisDo("hlen",key))
 	id := ruleConfig.getIncId()
 	ruleStr := ruleConfig.structToStr(rule)
-	redisDo("hset",redis.Args{}.Add(key).Add(id).Add(ruleStr)...)
+	zlib.MyPrint("ruleStr : ",ruleStr, " rule struct : ",rule)
+	res ,err := redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(id).Add(ruleStr)...))
+	if err != nil{
+		zlib.ExitPrint(" addRuleOne redis err ")
+	}
+	return res
 }
