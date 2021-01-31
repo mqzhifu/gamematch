@@ -47,24 +47,36 @@ hash_groupId_players
 	groupPlayers	playerId
 */
 
-func (gamematch *Gamematch)calculateNumberTotal(sum int,groupPerson map[int]int)map[int][5]int{
-	//1人组：1-个
-	//2人组：4个
-	//3人组：2个
-	//4人组：6个
-	//5人组：3个
+/*
+这里才是最终的匹配计算公式~
+//匹配的最小单们是组，而不是玩家，每个组有几个人~  这<几个人>就是匹配的最小属性
+//根据每个组里的人数，加和，等于固定一个正整数
+
+1人组：1个
+2人组：4个
+3人组：2个
+4人组：6个
+5人组：3个
+
+假设，满足一局游戏，需要21个人，如下：
+1+2+3+4+5 = 21
+
+*/
+func  (match *Match) calculateNumberTotal (sum int,groupPerson map[int]int)map[int][5]int{
+
 
 	result := make(map[int][5]int)
 	inc := 0
-	for a:=0;a<=groupPerson[1];a++{
-		for b:=0;b<=groupPerson[2];b++{
+	for a:=0;a<=groupPerson[5];a++{
+		for b:=0;b<=groupPerson[4];b++{
 			for c:=0;c<=groupPerson[3];c++{
-				for d:=0;d<=groupPerson[4];d++{
-					for e:=0;e<=groupPerson[5];e++{
-						if a + 2 * b + 3 * c + 4 * d + 5 * e == sum {
-							ttt := [5]int{a,b,c,d,e}
+				for d:=0;d<=groupPerson[2];d++{
+					for e:=0;e<=groupPerson[1];e++{
+						if 5 * a  + 4 * b + 3 * c + 2 * d + e == sum {
+							//ttt := [5]int{a,b,c,d,e}
+							ttt := [5]int{e,d,c,b,a}
 							result[inc] = ttt
-							zlib.MyPrint("1 x ",a," + 2 x",b,"+ 3 x ",c," + 4 x ",d , " 5 x ",e,"=",sum)
+							zlib.MyPrint("5 x ",a," + 4 x",b,"+ 3 x ",c," + 2 x ",d , " 1 x ",e,"=",sum)
 							inc++
 						}
 					}

@@ -14,9 +14,11 @@ func Test(){
 
 	//TestAddRuleData(*myGamematch)
 	//TestSign(*myGamematch)
-	TestMatching(*myGamematch)
+	//TestMatching(*myGamematch)
 
-	zlib.ExitPrint(-500)
+	matchingCase1(*myGamematch)
+
+	zlib.ExitPrint(-999)
 }
 
 //func total(n int){
@@ -42,15 +44,36 @@ func clear(myGamematch Gamematch){
 	zlib.ExitPrint("clear all done. ")
 }
 func TestAddRuleData(myGamematch Gamematch){
+	//rule := Rule{
+	//	Id: 1,
+	//	AppId: 3,
+	//	CategoryKey: "normal",
+	//	MatchTimeout: 7,
+	//	SuccessTimeout: 8,
+	//	IsSupportGroup: 1,
+	//	Flag: 2,
+	//	PersonCondition: 4,
+	//	groupPersonMax:5,
+	//	//TeamPerson: 5,
+	//	PlayerWeight: PlayerWeight{
+	//		ScoreMin:-1,
+	//		ScoreMax:-1,
+	//		AutoAssign:true,
+	//		Formula:"",
+	//		Flag:1,
+	//	},
+	//}
+
 	rule := Rule{
-		Id: 1,
-		AppId: 3,
-		CategoryKey: "normal",
-		MatchTimeout: 7,
-		SuccessTimeout: 8,
+		Id: 2,
+		AppId: 4,
+		CategoryKey: "team",
+		MatchTimeout: 10,
+		SuccessTimeout: 15,
 		IsSupportGroup: 1,
-		Flag: 2,
-		PersonCondition: 4,
+		Flag: 1,
+		PersonCondition: 5,
+		TeamVSPerson:5,
 		groupPersonMax:5,
 		//TeamPerson: 5,
 		PlayerWeight: PlayerWeight{
@@ -61,86 +84,131 @@ func TestAddRuleData(myGamematch Gamematch){
 			Flag:1,
 		},
 	}
+
 	myGamematch.RuleConfig.AddOne(rule)
 }
 
 func TestMatching(myGamematch Gamematch){
-	myGamematch.StartAllQueueMatching()
+	myGamematch.DemonStartAllRuleMatching()
+}
+
+func matchingCase1(myGamematch Gamematch){
+	//myGamematch.testSignDel(2)
+	//TestSign(myGamematch)
+	TestMatching(myGamematch)
 }
 
 func TestSign(myGamematch Gamematch){
-	players :=[]Player{
-		Player{Id:1},
+	ruleId := 2
+	playerIdInc := 1
+	signRuleArr := []int{1,5,4,5,3,3,3,2,2,1,1,1,1,5,4,4}
+	for _,playerNumMax := range signRuleArr{
+		var playerStructArr []Player
+		for i:=0;i<playerNumMax;i++{
+			player := Player{Id:playerIdInc}
+			playerStructArr = append(playerStructArr,player)
+			playerIdInc++
+		}
+		myGamematch.Sign(ruleId,playerStructArr)
 	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:2},
-		Player{Id:3},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:4},
-		Player{Id:5},
-		Player{Id:6},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:7},
-		Player{Id:8},
-		Player{Id:9},
-	}
-	myGamematch.Sign(1,players)
-
-
-	players =[]Player{
-		Player{Id:10},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:11},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:12},
-		Player{Id:13},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:14},
-		Player{Id:15},
-	}
-	myGamematch.Sign(1,players)
-
-
-	players =[]Player{
-		Player{Id:16},
-		Player{Id:17},
-		Player{Id:18},
-	}
-	myGamematch.Sign(1,players)
-
-
-	players =[]Player{
-		Player{Id:19},
-	}
-	myGamematch.Sign(1,players)
-
-	players =[]Player{
-		Player{Id:20},
-		Player{Id:21},
-	}
-	myGamematch.Sign(1,players)
 
 
 
-
-
+	//players =[]Player{
+	//	Player{Id:2},
+	//	Player{Id:3},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:4},
+	//	Player{Id:5},
+	//	Player{Id:6},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:7},
+	//	Player{Id:8},
+	//	Player{Id:9},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//players =[]Player{
+	//	Player{Id:10},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:11},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:12},
+	//	Player{Id:13},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:14},
+	//	Player{Id:15},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//players =[]Player{
+	//	Player{Id:16},
+	//	Player{Id:17},
+	//	Player{Id:18},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//players =[]Player{
+	//	Player{Id:19},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//
+	//players =[]Player{
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//players =[]Player{
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//players =[]Player{
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//	Player{Id:21},
+	//	Player{Id:20},
+	//}
+	//myGamematch.Sign(1,players)
+	//
+	//
+	//
 
 
 }

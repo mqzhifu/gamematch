@@ -58,8 +58,8 @@ func (playerStatus *PlayerStatus) GetOne(player Player)PlayerStatusElement{
 		playerStatusElement := PlayerStatusElement{
 			PlayerId: player.Id,
 			Status: PlayerStatusNotExist,
-			ATime: getNowTime(),
-			UTime: getNowTime(),
+			ATime: zlib.GetNowTimeSecondToInt(),
+			UTime: zlib.GetNowTimeSecondToInt(),
 		}
 		return playerStatusElement
 	}
@@ -89,44 +89,16 @@ func (playerStatus *PlayerStatus)signTimeoutUpInfo(player Player){
 	playerStatusElement := playerStatus.GetOne(player)
 	playerStatus.delOne(playerStatusElement)
 }
-func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement PlayerStatusElement)(isTimeout bool,isClear bool){
-	now := getNowTime()
+func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement PlayerStatusElement)(isTimeout bool ){
+	now := zlib.GetNowTimeSecondToInt()
 	if(now < playerStatusElement.SignTimeout){
-		return true,false
+		return true
 	}
-	zlib.MyPrint("sign timeout : need delete one group...")
-	//zlib.MyPrint("playerStatus.CheckSignTimeout : ",hasSignTimeout)
-	groupInfo := queueSign.getGroupElementById(rule,playerStatusElement.GroupId)
-	if groupInfo.GroupPerson > 1{
-		return true,false
-	}
-	//newPlayerStatusElement := *playerStatusElement
-	//newPlayerStatusElement.SignTimeout = 0
-	//newPlayerStatusElement.SuccessTimeout = 0
-	//newPlayerStatusElement.Status = PlayerStatusNotExist
-	//playerStatus.upInfo(*playerStatusElement)
-	//上面是走更新流程，不删除这个KEY，但得加一个：NONE 状态，下面是直接删除redis key，更新结构体状态，略简单
-	//playerStatusElement.Status = PlayerStatusNotExist
-	//playerStatusElement.SignTimeout = 0
-	//playerStatusElement.SuccessTimeout = 0
-	queueSign.delOneRuleOneGroup(rule,playerStatusElement.GroupId)
-	playerStatus.delOne(playerStatusElement)
-	//zlib.MyPrint(playerStatusElement)
-	return true,true
+	return false
 }
-
-////
-//func (playerStatus *PlayerStatus) CheckSignTimeout(playerStatusElement PlayerStatusElement)bool{
-//	now := getNowTime()
-//	if(now >= playerStatusElement.SignTimeout){
-//		return true
-//	}
-//	return false
-//}
-//
 func  (playerStatus *PlayerStatus)  upInfo(playerStatusElement PlayerStatusElement,newPlayerStatusElement PlayerStatusElement)(bool ,error){
 	fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
-	newPlayerStatusElement.UTime = getNowTime()
+	newPlayerStatusElement.UTime = zlib.GetNowTimeSecondToInt()
 	playerStatus.setNewOne(newPlayerStatusElement)
 	return true,nil
 }

@@ -138,10 +138,10 @@ func (ruleConfig *RuleConfig) AddOne(rule Rule)int{
 		zlib.MyPrint("rule confg add one err,id has exist",ruleOld.Id)
 	}
 	key := ruleConfig.getRedisKey()
-	id := ruleConfig.getIncId()
+	//id := ruleConfig.getIncId()
 	ruleStr := ruleConfig.structToStr(rule)
 	zlib.MyPrint("ruleStr : ",ruleStr, " rule struct : ",rule)
-	res ,err := redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(id).Add(ruleStr)...))
+	res ,err := redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(rule.Id).Add(ruleStr)...))
 	if err != nil{
 		zlib.ExitPrint(" addRuleOne redis err ")
 	}

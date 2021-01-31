@@ -5,7 +5,7 @@ import (
 	"src/zlib"
 )
 
-func InitConn(redisHost string , redisPort string)redis.Conn{
+func NewRedisConn(redisHost string , redisPort string)redis.Conn{
 
 	conn,err := redis.Dial("tcp",redisHost+":"+redisPort)
 	if err != nil{
