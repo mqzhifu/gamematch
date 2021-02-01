@@ -32,6 +32,7 @@ type PlayerStatus struct {
 }
 
 func NewPlayerStatus()*PlayerStatus{
+	zlib.MyPrint("Global var :NewPlayerStatus")
 	playerStatus := new(PlayerStatus)
 	return playerStatus
 }

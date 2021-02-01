@@ -21,11 +21,11 @@ import (
 
 
 const (
-	separation = "#"		//redis 内容-字符串分隔符
-	redisSeparation = "_"	//redis key 分隔符
-	IdsSeparation = ","		//多个ID 分隔符
-	redisPrefix = "match"	//整个服务的，redis 前缀
-	PlayerMatchingMaxTimes = 3	//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
+	separation 				= "#"		//redis 内容-字符串分隔符
+	redisSeparation 		= "_"		//redis key 分隔符
+	IdsSeparation 			= ","		//多个ID 分隔符
+	redisPrefix 			= "match"	//整个服务的，redis 前缀
+	PlayerMatchingMaxTimes 	= 3			//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
 
 )
 type Gamematch struct {
@@ -76,6 +76,7 @@ func NewSelf()*Gamematch{
 	gamematch.containerMatch	= make( 	map[int]*Match)
 
 
+	zlib.MyPrint("init container....")
 	//实例化容器
 	for _,rule := range gamematch.RuleConfig.getAll(){
 		gamematch.containerPush[rule.Id] = NewPush(rule)

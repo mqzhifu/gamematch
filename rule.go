@@ -61,6 +61,7 @@ func   NewRuleConfig ()*RuleConfig{
 		}
 	}
 
+	zlib.MyPrint("rule cnt : ",len(res))
 
 	//mapKey := 0
 	for k,v := range res{

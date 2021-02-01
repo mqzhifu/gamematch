@@ -94,8 +94,8 @@ func TestMatching(myGamematch Gamematch){
 
 func matchingCase1(myGamematch Gamematch){
 	//myGamematch.testSignDel(2)
-	//TestSign(myGamematch)
-	TestMatching(myGamematch)
+	TestSign(myGamematch)
+	//TestMatching(myGamematch)
 }
 
 func TestSign(myGamematch Gamematch){

@@ -6,7 +6,7 @@ import (
 )
 
 func NewRedisConn(redisHost string , redisPort string)redis.Conn{
-
+	zlib.MyPrint("NewRedisConn : ",redisHost,redisPort)
 	conn,err := redis.Dial("tcp",redisHost+":"+redisPort)
 	if err != nil{
 		zlib.ExitPrint("redis conn err:",err)
