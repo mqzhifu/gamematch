@@ -8,6 +8,18 @@ import (
 	"sync"
 )
 
+const(
+	PushCategorySign 	= 1
+	PushCategorySuccess = 2
+
+	PushStatusWait		= 1
+	PushStatusRetry 	= 2
+	PushStatusOk		= 3
+	PushStatusFiled 	= 4
+
+
+
+)
 //匹配成功后，会推送给3方，
 type PushElement struct {
 	Id  		int
@@ -16,6 +28,8 @@ type PushElement struct {
 	LinkId		int
 	Status  	int 	//状态：1未推送2推送失败，等待重试3推送成功4推送失败，不再重试
 	Times  		int		//已推送次数
+	Category	int		//1:报名超时 2成功结果超时
+	Payload 	string	//自定义的载体
 }
 
 type Push struct {
@@ -28,6 +42,8 @@ func NewPush(rule Rule)*Push{
 	push.Rule = rule
 	return push
 }
+
+var PushRetryPeriod = []int{10,30,60,600}
 
 //成功类的整个：大前缀
 func (push *Push)  getRedisPrefixKey( )string{
@@ -70,15 +86,18 @@ func (push *Push) getById (id int) (element PushElement) {
 	return element
 }
 
-func  (push *Push) addOnePush (linkId int) int {
+func  (push *Push) addOnePush (linkId int,category int ,payload string) int {
 	id :=  push.GetPushIncId()
 	key := push.getRedisKeyPush(id)
 	pushElement := PushElement{
+		Id : id,
 		ATime: zlib.GetNowTimeSecondToInt(),
 		Status: 1,
 		UTime: zlib.GetNowTimeSecondToInt(),
 		Times:0,
 		LinkId: linkId,
+		Category : category,
+		Payload : payload,
 	}
 	pushStr := push.pushStructToStr(pushElement)
 	res,err := redisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
@@ -123,7 +142,7 @@ func (push *Push)   delAll(){
 }
 
 func (push *Push)   delOneRule(){
-	zlib.MyPrint(" push delOneRule : ",push.getRedisCatePrefixKey())
+	log.Debug(" push delOneRule : ",push.getRedisCatePrefixKey())
 	push.delAllPush()
 	push.delAllStatus()
 }
@@ -132,7 +151,7 @@ func  (push *Push)  delAllPush( ){
 	prefix := push.getRedisKeyPushPrefix()
 	res,_ := redis.Strings( redisDo("keys",prefix + "*"  ))
 	if len(res) == 0{
-		zlib.MyPrint(" GroupElement by keys(*) : is empty")
+		log.Notice(" GroupElement by keys(*) : is empty")
 		return
 	}
 	//zlib.ExitPrint(res,-200)
@@ -145,7 +164,7 @@ func  (push *Push)  delAllPush( ){
 func  (push *Push)  delAllStatus( ){
 	key := push.getRedisKeyPushStatus()
 	res,_ := redis.Strings( redisDo("del",key ))
-	zlib.MyPrint("delAllStatus :",res)
+	log.Debug("delAllStatus :",res)
 }
 
 func  (push *Push)  delOneStatus( pushId int){
@@ -160,4 +179,77 @@ func  (push *Push)  delOnePush( id int){
 	zlib.MyPrint(" delOnePush res",res)
 
 	push.delOneStatus(id)
+}
+func  (push *Push) hook(id int,status int){
+	element := push.getById(id)
+	if element.Category == PushCategorySign{
+
+	}else{
+
+	}
+	if status == PushStatusWait{
+		push.pushAndUpInfo(element,PushStatusRetry)
+	}else{
+		if element.Times >= len(PushRetryPeriod) {
+			push.delOnePush(id)
+		}else{
+			time := PushRetryPeriod[element.Times]
+
+			d := zlib.GetNowTimeSecondToInt() - element.UTime
+			if d >= time{
+				push.pushAndUpInfo(element,PushStatusRetry)
+			}
+		}
+
+	}
+}
+func  (push *Push)pushAndUpInfo(element PushElement,status int){
+	sendHttpRs := true
+	if sendHttpRs{
+		push.delOnePush(element.Id)
+	}else{
+		element.Status = status
+		element.UTime = zlib.GetNowTimeSecondToInt()
+		element.Times = element.Times + 1
+		key := push.getRedisKeyPush(element.Id)
+		pushStr := push.pushStructToStr(element)
+		res,err := redisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
+		zlib.MyPrint(res,err)
+	}
+}
+
+func  (push *Push)  checkStatus(){
+	log.Info("start one rule checkStatus : ")
+	key := push.getRedisKeyPushStatus()
+
+	inc := 1
+	for {
+		log.Info("loop inc : ",inc )
+		if inc >= 2147483647{
+			inc = 0
+		}
+		inc++
+
+		push.checkOneByStatus(key,PushStatusWait)
+		push.checkOneByStatus(key,PushStatusRetry)
+
+	}
+
+}
+
+func  (push *Push)  checkOneByStatus(key string,status int){
+	res,err := redis.IntMap(  redisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
+	log.Info("sign timeout group element total : ",len(res))
+	if err != nil{
+		log.Error("redis keys err :",err.Error())
+		return
+	}
+
+	if len(res) == 0{
+		log.Notice(" empty , no need process")
+		mySleepSecond(1)
+	}
+	for _,id := range res{
+		push.hook(id,status)
+	}
 }

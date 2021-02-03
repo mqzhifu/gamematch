@@ -1,0 +1,110 @@
+package gamematch
+
+import (
+	"github.com/gomodule/redigo/redis"
+	"src/zlib"
+	"strconv"
+	"strings"
+)
+
+type  Group struct {
+	Id				int
+	LinkId			int		//关联ID，匹配成功后关联成功的那条记录的ID，正常报名用不上
+	Person			int		//小组人数
+	Weight			float32	//小组权重
+	MatchTimes		int		//已匹配过的次数，超过3次，证明该用户始终不能匹配成功，直接丢弃，不过没用到
+	SignTimeout		int		//多少秒后无人来取，即超时，更新用户状态，删除数据
+	SuccessTimeout	int
+	SignTime		int		//报名时间
+	SuccessTime		int		//匹配成功时间
+	Players 		[]Player
+	Addition		string	//请求方附加属性值
+	TeamId			int		//组队互相PK的时候，得成两个队伍
+}
+
+func  (gamematch *Gamematch) NewGroupStruct(rule Rule)Group{
+	group := Group{}
+	group.Id = gamematch.GetGroupIncId(rule.Id)
+	group.LinkId = 0
+	group.Person = 0
+	group.Weight = 0
+	group.MatchTimes = 0
+	group.SignTimeout = zlib.GetNowTimeSecondToInt()
+	group.SuccessTimeout = 0
+	group.SignTime = 0
+	group.SuccessTime = 0
+	group.Addition = ""
+	group.Players = nil
+
+	return group
+}
+
+//组自增ID，因为匹配最小单位是基于组，而不是基于一个人，组ID就得做到全局唯一，很重要
+func  (gamematch *Gamematch) getRedisGroupIncKey(ruleId int)string{
+	signClass := gamematch.getContainerSignByRuleId(ruleId)
+	return signClass.getRedisCatePrefixKey()  + redisSeparation + "group_inc_id"
+}
+
+//获取并生成一个自增GROUP-ID
+func (gamematch *Gamematch) GetGroupIncId( ruleId int )  int{
+	key := gamematch.getRedisGroupIncKey(ruleId)
+	res,_ := redis.Int(redisDo("INCR",key))
+	return res
+}
+
+
+func  GroupStrToStruct(redisStr string)Group{
+	//zlib.MyPrint("redis str : ",redisStr)
+	strArr := strings.Split(redisStr,separation)
+	//zlib.ExitPrint("redisStr",redisStr)
+	playersArr := strings.Split(strArr[9],IdsSeparation)
+	var players []Player
+	for _,v := range playersArr{
+		players = append(players,Player{Id : zlib.Atoi(v)})
+	}
+
+	element := Group{
+		Id 				:	zlib.Atoi(strArr[0]),
+		LinkId			: 	zlib.Atoi(strArr[1]),
+		Person 			:	zlib.Atoi(strArr[2]),
+		Weight			:	zlib.StringToFloat(strArr[3]),
+		MatchTimes 		:	zlib.Atoi(strArr[4]),
+		SignTimeout 	:	zlib.Atoi(strArr[5]),
+		SuccessTimeout	: 	zlib.Atoi(strArr[6]),
+		SignTime		: 	zlib.Atoi(strArr[7]),
+		SuccessTime		: 	zlib.Atoi(strArr[8]),
+		Players 		:	players,
+		Addition		:	strArr[10],
+		TeamId			:	zlib.Atoi(strArr[11]),
+	}
+
+	return element
+}
+
+func  GroupStructToStr(group Group)string{
+	//Weight	float32	//小组权重
+	//MatchTimes	int		//已匹配过的次数，超过3次，证明该用户始终不能匹配成功，直接丢弃
+
+	playersIds := ""
+	for _,v := range group.Players{
+		playersIds +=  strconv.Itoa(v.Id) + IdsSeparation
+	}
+	playersIds = playersIds[0:len(playersIds)-1]
+	Weight := zlib.FloatToString(group.Weight,3)
+
+	content :=
+		strconv.Itoa(  group.Id )+ separation +
+			strconv.Itoa(  group.LinkId )+ separation +
+			strconv.Itoa(  group.Person )+ separation +
+			Weight + separation +
+			strconv.Itoa(  group.MatchTimes )+ separation +
+			strconv.Itoa(  group.SignTimeout )+ separation +
+			strconv.Itoa(  group.SuccessTimeout )+ separation +
+			strconv.Itoa(  group.SignTime )+ separation +
+			strconv.Itoa(  group.SuccessTime )+ separation +
+			playersIds + separation +
+			group.Addition +separation +
+			strconv.Itoa(  group.TeamId)
+
+	return content
+}

@@ -85,6 +85,7 @@ func (queueSuccess *QueueSuccess) GetResultById( id int ,isIncludeGroupInfo int 
 	}
 
 	result = queueSuccess.strToStruct(res)
+
 	if isIncludeGroupInfo == 1{
 		var groups []Group
 		for _,v :=range result.GroupIds{
@@ -94,11 +95,11 @@ func (queueSuccess *QueueSuccess) GetResultById( id int ,isIncludeGroupInfo int 
 		result.Groups = groups
 	}
 
-
 	if isIncludePushInfo == 1{
 		result.PushElement = queueSuccess.Push.getById(result.PushId)
 	}
-
+	//fmt.Printf("%+v",result)
+	//zlib.ExitPrint(11)
 	return result
 }
 func (queueSuccess *QueueSuccess) getGroupElementById(  id int ) (group  Group){
@@ -126,7 +127,8 @@ func  (queueSuccess *QueueSuccess)addOne(result Result,push *Push) {
 	res,err := redisDo("zadd",redis.Args{}.Add(key).Add(result.Timeout).Add(result.Id)...)
 	zlib.MyPrint("add timeout index rs : ",res,err)
 
-	pushId := push.addOnePush(result.Id)
+	resultStr := queueSuccess.structToStr(result)
+	pushId := push.addOnePush(result.Id,PushCategorySuccess,resultStr)
 	result.PushId = pushId
 	//添加一条元素
 	key = queueSuccess.getRedisKeyResult(result.Id)
@@ -136,10 +138,6 @@ func  (queueSuccess *QueueSuccess)addOne(result Result,push *Push) {
 	zlib.MyPrint("add timeout index rs : ",res,err)
 
 
-
-
-	result2 := queueSuccess.GetResultById(result.Id,1,1)
-	zlib.ExitPrint(result2)
 
 }
 //一条匹配成功记录，要包括N条组信息，这是添加一个组的记录
@@ -163,6 +161,7 @@ func (queueSuccess *QueueSuccess)  strToStruct(redisStr string )Result{
 		Teams : zlib.ArrStringCoverArrInt(Teams),
 		PlayerIds : zlib.ArrStringCoverArrInt(PlayerIds),
 		GroupIds :  zlib.ArrStringCoverArrInt(GroupIds),
+		PushId: zlib.Atoi(strArr[6]),
 	}
 	return result
 }
@@ -177,7 +176,8 @@ func (queueSuccess *QueueSuccess) structToStr(result Result)string{
 		strconv.Itoa( result.Id) + separation +
 		strconv.Itoa( result.ATime) + separation +
 		strconv.Itoa( result.Timeout) + separation +
-			TeamsStr + separation +  PlayerIds + separation + GroupIds
+			TeamsStr + separation +  PlayerIds + separation + GroupIds + separation +
+			strconv.Itoa( result.PushId)
 
 	return content
 }
@@ -192,6 +192,7 @@ func  (queueSuccess *QueueSuccess)   delAll(){
 }
 
 func  (queueSuccess *QueueSuccess)   delOneRule(){
+	log.Info(" delOneRule ")
 	queueSuccess.delALLResult()
 	queueSuccess.delALLTimeout()
 	queueSuccess.delALLGroup()
@@ -205,7 +206,7 @@ func (queueSuccess *QueueSuccess)  delALLResult( ){
 	prefix := queueSuccess.getRedisKeyResultPrefix()
 	res,_ := redis.Strings( redisDo("keys",prefix + "*"  ))
 	if len(res) == 0{
-		zlib.MyPrint(" delALLResult by keys(*) : is empty")
+		log.Notice(" delALLResult by keys(*) : is empty")
 		return
 	}
 	//zlib.ExitPrint(res,-200)
@@ -220,7 +221,7 @@ func (queueSuccess *QueueSuccess)  delALLGroup( ){
 	prefix := queueSuccess.getRedisKeyGroupPrefix()
 	res,_ := redis.Strings( redisDo("keys",prefix + "*"  ))
 	if len(res) == 0{
-		zlib.MyPrint(" delALLGroup by keys(*) : is empty")
+		log.Notice(" delALLGroup by keys(*) : is empty")
 		return
 	}
 	//zlib.ExitPrint(res,-200)
@@ -235,7 +236,7 @@ func (queueSuccess *QueueSuccess)  delALLGroup( ){
 func (queueSuccess *QueueSuccess)  delOneResult( id int){
 	key := queueSuccess.getRedisKeyResult(id)
 	res,_ := redis.Strings( redisDo("del",key ))
-	zlib.MyPrint(" delOneRuleOneResult res",res)
+	log.Debug(" delOneRuleOneResult res",res)
 
 	queueSuccess.Push.delOnePush(id)
 }
@@ -244,11 +245,43 @@ func (queueSuccess *QueueSuccess)  delOneResult( id int){
 func (queueSuccess *QueueSuccess)  delALLTimeout( ){
 	key := queueSuccess.getRedisKeyTimeout()
 	res,_ := redisDo("del",key)
-	zlib.MyPrint(" delALLTimeout res",res)
+	log.Debug(" delALLTimeout res",res)
 }
 
 func (queueSuccess *QueueSuccess)  delOneTimeout( id int){
 	key := queueSuccess.getRedisKeyTimeout()
 	res,_ :=  redisDo("ZREM",redis.Args{}.Add(key).Add(id) )
-	zlib.MyPrint(" delOneTimeout res",res)
+	log.Debug(" delOneTimeout res",res)
+}
+
+func  (queueSuccess *QueueSuccess) CheckTimeout(push *Push){
+	keys := queueSuccess.getRedisKeyTimeout()
+	now := zlib.GetNowTimeSecondToInt()
+
+	inc := 1
+	for {
+		log.Info("loop inc : ",inc )
+		if inc >= 2147483647{
+			inc = 0
+		}
+		inc++
+
+		res,err := redis.IntMap(  redisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(keys).Add(now).Add("-inf").Add("WITHSCORES")...))
+		log.Info("sign timeout group element total : ",len(res))
+		if err != nil{
+			log.Error("redis keys err :",err.Error())
+			return
+		}
+
+		if len(res) == 0{
+			log.Notice(" empty , no need process")
+			mySleepSecond(1)
+			continue
+		}
+		for resultId,_ := range res{
+			queueSuccess.delOneTimeout(zlib.Atoi(resultId))
+			//zlib.ExitPrint(-199)
+		}
+		mySleepSecond(1)
+	}
 }

@@ -1,7 +1,6 @@
 package gamematch
 
 import (
-	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"reflect"
 	"src/zlib"
@@ -32,7 +31,7 @@ type PlayerStatus struct {
 }
 
 func NewPlayerStatus()*PlayerStatus{
-	zlib.MyPrint("Global var :NewPlayerStatus")
+	log.Info("Global var :NewPlayerStatus")
 	playerStatus := new(PlayerStatus)
 	return playerStatus
 }
@@ -92,13 +91,14 @@ func (playerStatus *PlayerStatus)signTimeoutUpInfo(player Player){
 }
 func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement PlayerStatusElement)(isTimeout bool ){
 	now := zlib.GetNowTimeSecondToInt()
-	if(now < playerStatusElement.SignTimeout){
+	if(now > playerStatusElement.SignTimeout){
 		return true
 	}
 	return false
 }
 func  (playerStatus *PlayerStatus)  upInfo(playerStatusElement PlayerStatusElement,newPlayerStatusElement PlayerStatusElement)(bool ,error){
-	fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
+	//fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
+	log.Info("action Upinfo , old status :",playerStatusElement.Status , " new status :" ,newPlayerStatusElement.Status)
 	newPlayerStatusElement.UTime = zlib.GetNowTimeSecondToInt()
 	playerStatus.setNewOne(newPlayerStatusElement)
 	return true,nil
@@ -111,6 +111,7 @@ func (playerStatus *PlayerStatus) upStatus(playerId int ,status int){
 	playerStatusElement := playerStatus.GetOne(player)
 	newPlayerStatusElement := playerStatusElement
 	newPlayerStatusElement.Status = status
+	log.Info("player up status , old status : ",playerStatusElement.Status , " new status : ",status)
 	playerStatus.upInfo(playerStatusElement,newPlayerStatusElement)
 }
 
@@ -150,15 +151,20 @@ func StructCovertStr(playerStatusElement interface{})string{
 
 	return commandValue
 }
+func (playerStatus *PlayerStatus)  delOneById(playerId int){
+	key := playerStatus.getRedisKey(playerId)
+	res,_ := redisDo("del",key)
+	log.Notice("playerStatus delOneById , id : ",playerId , " , rs : ", res)
+}
 
 func (playerStatus *PlayerStatus)  delOne(playerStatusElement PlayerStatusElement){
 	key := playerStatus.getRedisKey(playerStatusElement.PlayerId)
 	res,_ := redisDo("del",key)
-	zlib.MyPrint("playerStatus delOne",res)
+	log.Notice("playerStatus delOne , id : ",playerStatusElement.PlayerId , " rs : ",res)
 }
 //删除所有玩家状态值
 func  (playerStatus *PlayerStatus)  delAllPlayers(){
-	zlib.MyPrint("delAllPlayers ")
+	log.Info("delAllPlayers ")
 	key := playerStatus.GetCommonRedisPrefix()
 	keys := key + "*"
 	redisDelAllByPrefix(keys)

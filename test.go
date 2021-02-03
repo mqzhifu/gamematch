@@ -1,6 +1,8 @@
 package gamematch
 
-import "src/zlib"
+import (
+	"src/zlib"
+)
 var AddRuleFlag = 0
 func Test(){
 	//AddRuleFlag = 1
@@ -11,6 +13,11 @@ func Test(){
 
 	//clear(*myGamematch)
 
+
+	//myGamematch.DemonAllRuleCheckSignTimeout()
+
+	//rule,_ := myGamematch.RuleConfig.GetById(2)
+	//myGamematch.CheckSignTimeout(rule)
 
 	//TestAddRuleData(*myGamematch)
 	//TestSign(*myGamematch)
@@ -44,37 +51,16 @@ func clear(myGamematch Gamematch){
 	zlib.ExitPrint("clear all done. ")
 }
 func TestAddRuleData(myGamematch Gamematch){
-	//rule := Rule{
-	//	Id: 1,
-	//	AppId: 3,
-	//	CategoryKey: "normal",
-	//	MatchTimeout: 7,
-	//	SuccessTimeout: 8,
-	//	IsSupportGroup: 1,
-	//	Flag: 2,
-	//	PersonCondition: 4,
-	//	groupPersonMax:5,
-	//	//TeamPerson: 5,
-	//	PlayerWeight: PlayerWeight{
-	//		ScoreMin:-1,
-	//		ScoreMax:-1,
-	//		AutoAssign:true,
-	//		Formula:"",
-	//		Flag:1,
-	//	},
-	//}
-
-	rule := Rule{
-		Id: 2,
-		AppId: 4,
-		CategoryKey: "team",
-		MatchTimeout: 10,
-		SuccessTimeout: 15,
+	rule1 := Rule{
+		Id: 1,
+		AppId: 3,
+		CategoryKey: "RuleFlagCollectPerson",
+		MatchTimeout: 7,
+		SuccessTimeout: 60,
 		IsSupportGroup: 1,
-		Flag: 1,
-		PersonCondition: 5,
-		TeamVSPerson:5,
-		groupPersonMax:5,
+		Flag: 2,
+		PersonCondition: 4,
+		GroupPersonMax:5,
 		//TeamPerson: 5,
 		PlayerWeight: PlayerWeight{
 			ScoreMin:-1,
@@ -85,17 +71,39 @@ func TestAddRuleData(myGamematch Gamematch){
 		},
 	}
 
-	myGamematch.RuleConfig.AddOne(rule)
+	rule2 := Rule{
+		Id: 2,
+		AppId: 4,
+		CategoryKey: "RuleFlagTeamVS",
+		MatchTimeout: 10,
+		SuccessTimeout: 70,
+		IsSupportGroup: 1,
+		Flag: 1,
+		PersonCondition: 5,
+		TeamVSPerson:5,
+		GroupPersonMax:5,
+		//TeamPerson: 5,
+		PlayerWeight: PlayerWeight{
+			ScoreMin:-1,
+			ScoreMax:-1,
+			AutoAssign:true,
+			Formula:"",
+			Flag:1,
+		},
+	}
+
+	myGamematch.RuleConfig.AddOne(rule1)
+	myGamematch.RuleConfig.AddOne(rule2)
 }
 
 func TestMatching(myGamematch Gamematch){
-	myGamematch.DemonStartAllRuleMatching()
+	//myGamematch.DemonStartAllRuleMatching()
 }
 
 func matchingCase1(myGamematch Gamematch){
 	//myGamematch.testSignDel(2)
-	TestSign(myGamematch)
-	//TestMatching(myGamematch)
+	//TestSign(myGamematch)
+	myGamematch.DemonAll()
 }
 
 func TestSign(myGamematch Gamematch){

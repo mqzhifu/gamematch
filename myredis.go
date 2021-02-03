@@ -5,39 +5,42 @@ import (
 	"src/zlib"
 )
 
-func NewRedisConn(redisHost string , redisPort string)redis.Conn{
-	zlib.MyPrint("NewRedisConn : ",redisHost,redisPort)
-	conn,err := redis.Dial("tcp",redisHost+":"+redisPort)
-	if err != nil{
-		zlib.ExitPrint("redis conn err:",err)
+func NewRedisConn(redisHost string , redisPort string)(redis.Conn,error){
+	log.Info("NewRedisConn : ",redisHost,redisPort)
+	conn,error := redis.Dial("tcp",redisHost+":"+redisPort)
+	if error != nil{
+		return nil,err.NewErrorCode(300)
 	}
-	return conn
+	return conn,nil
 }
 
-func redisDo(commandName string, args ...interface{})(reply interface{}, err error){
-	zlib.MyPrint("redisDo init:",commandName,args)
-	res,err := redisConn.Do(commandName,args... )
-	if err != nil{
-		zlib.ExitPrint("redis do has err",err.Error())
+func redisDo(commandName string, args ...interface{})(reply interface{}, error error){
+	log.Debug("[redis]redisDo init:",commandName,args)
+	res,error := redisConn.Do(commandName,args... )
+	if error != nil{
+		errInfo := make(map[int]string)
+		errInfo[0] = error.Error()
+		return nil,err.NewErrorCodeReplace(301,errInfo)
 	}
 	//reflect.ValueOf(res).IsNil(),reflect.ValueOf(res).Kind(),reflect.TypeOf(res)
 	//zlib.MyPrint("redisDo exec ,res : ",res," err :",err)
-	return res,err
+	return res,error
 }
 
 func redisDelAllByPrefix(prefix string){
+	log.Notice(" action redisDelAllByPrefix : ",prefix)
 	res,err := redis.Strings(  redisDo("keys",prefix))
 	if err != nil{
 		zlib.ExitPrint("redis keys err :",err.Error())
 	}
-	zlib.MyPrint("del element will num :",len(res))
+	log.Debug("del element will num :",len(res))
 	if len(res) <= 0{
-		zlib.MyPrint(" keys is null,no need del...")
+		log.Notice(" keys is null,no need del...")
 		return
 	}
 	for _,v := range res{
 		res,_ :=redisDo("del",v)
-		zlib.MyPrint("del one player status : ",res)
+		log.Debug("del key ",v , " ,  rs : ",res)
 	}
 }
 

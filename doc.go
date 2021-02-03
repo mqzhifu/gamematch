@@ -1,7 +1,5 @@
 package gamematch
 
-import "src/zlib"
-
 /*
 	0. 加锁
 	0. 先，从最大的范围搜索，扫整个集合，如果元素过少，直接在这个维度就结束了
@@ -76,7 +74,7 @@ func  (match *Match) calculateNumberTotal (sum int,groupPerson map[int]int)map[i
 							//ttt := [5]int{a,b,c,d,e}
 							ttt := [5]int{e,d,c,b,a}
 							result[inc] = ttt
-							zlib.MyPrint("5 x ",a," + 4 x",b,"+ 3 x ",c," + 2 x ",d , " 1 x ",e,"=",sum)
+							log.Debug("5 x ",a," + 4 x",b,"+ 3 x ",c," + 2 x ",d , " 1 x ",e,"=",sum)
 							inc++
 						}
 					}

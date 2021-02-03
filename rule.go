@@ -10,6 +10,13 @@ const(
 	RuleFlagTeamVS = 1
 	RuleFlagCollectPerson = 2
 	RuleGroupPersonMax = 5
+	RuleTeamVSPersonMax			= 10  //组队互相PK，每个队最多人数
+	RulePersonConditionMax = 100	//N人组团，最大人数
+
+	RuleMatchTimeoutMax =	60
+	RuleMatchTimeoutMin = 3
+	RuleSuccessTimeoutMax = 600
+	RuleSuccessTimeoutMin = 60
 )
 //匹配规则 - 配置 ,像： 附加属性
 type Rule struct {
@@ -24,7 +31,7 @@ type Rule struct {
 	TeamVSPerson	int		//如果是N VS N 的类型，得确定 每个队伍几个人,必须上面的flag = 1 ，该变量才有用,目前最大是5
 	TeamVSNumber	int		//保留字段，还没想好，初衷：正常就是一个队伍跟一个队列PK，但是可能会有多队伍互相PK，不一定是N V N
 	PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，如果是小组/团队，是计算平均值
-	groupPersonMax	int		//玩家以组为单位，一个小组最大报名人数,暂定最大为：5
+	GroupPersonMax	int		//玩家以组为单位，一个小组最大报名人数,暂定最大为：5
 }
 
 type PlayerWeight struct {
@@ -47,21 +54,23 @@ func (ruleConfig *RuleConfig) getRedisIncKey()string{
 	return redisPrefix + redisSeparation + "rule" + redisSeparation + "inc"
 }
 
-func   NewRuleConfig ()*RuleConfig{
+func   NewRuleConfig ()(*RuleConfig,error){
 	obj := new (RuleConfig)
-	res,err := redis.StringMap(redisDo("HGETALL",obj.getRedisKey()))
-	if err != nil{
-		zlib.ExitPrint("rule confg HGETALL err ,",err.Error())
+	res,errs := redis.StringMap(redisDo("HGETALL",obj.getRedisKey()))
+	if errs != nil{
+		msg := make(map[int]string)
+		msg[0] = errs.Error()
+		return obj,err.NewErrorCodeReplace(600,msg)
 	}
 	obj.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
 	if AddRuleFlag == 0{
 		if len(res) <= 0 {
-			zlib.ExitPrint("RuleConfig is null")
+			return obj,err.NewErrorCode(601)
 		}
 	}
 
-	zlib.MyPrint("rule cnt : ",len(res))
+	log.Info("rule cnt : ",len(res))
 
 	//mapKey := 0
 	for k,v := range res{
@@ -70,7 +79,7 @@ func   NewRuleConfig ()*RuleConfig{
 		obj.Data[key] = myRule
 	}
 	//zlib.ExitPrint(obj.Data)
-	return obj
+	return obj,nil
 }
 
 func (ruleConfig *RuleConfig)strToStruct(redisStr string)Rule{
@@ -86,7 +95,7 @@ func (ruleConfig *RuleConfig)strToStruct(redisStr string)Rule{
 		IsSupportGroup 	:	zlib.Atoi(strArr[6]),
 		Flag 			:	zlib.Atoi(strArr[7]),
 		TeamVSPerson 		:	zlib.Atoi(strArr[8]),
-		groupPersonMax : zlib.Atoi(strArr[9]),
+		GroupPersonMax : zlib.Atoi(strArr[9]),
 		//WeightRule 		:	strArr[0],
 	}
 	return element
@@ -104,7 +113,7 @@ func (ruleConfig *RuleConfig)structToStr(rule Rule)string{
 		strconv.Itoa(rule.IsSupportGroup) + separation +
 		strconv.Itoa(rule.Flag) + separation +
 		strconv.Itoa(rule.TeamVSPerson) + separation +
-		strconv.Itoa(rule.groupPersonMax)
+		strconv.Itoa(rule.GroupPersonMax)
 
 		//rule.WeightRule + separation
 	return str
@@ -126,25 +135,90 @@ func (ruleConfig *RuleConfig) getIncId( ) (int){
 	return res
 }
 
-func (ruleConfig *RuleConfig) AddOne(rule Rule)int{
-	if rule.groupPersonMax > RuleGroupPersonMax {
-		zlib.ExitPrint("小组最大人数：",RuleGroupPersonMax)
-	}
-
-	if rule.groupPersonMax <= 0 {
-		zlib.ExitPrint("小组最大人数不能 <= 0 ")
-	}
-	ruleOld ,ok := ruleConfig.Data[rule.Id]
-	if ok{
-		zlib.MyPrint("rule confg add one err,id has exist",ruleOld.Id)
+func (ruleConfig *RuleConfig) AddOne(rule Rule)(bool,error){
+	checkRs,errs := ruleConfig.CheckRuleByElement(rule)
+	if !checkRs{
+		return false,errs
 	}
 	key := ruleConfig.getRedisKey()
 	//id := ruleConfig.getIncId()
 	ruleStr := ruleConfig.structToStr(rule)
-	zlib.MyPrint("ruleStr : ",ruleStr, " rule struct : ",rule)
-	res ,err := redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(rule.Id).Add(ruleStr)...))
-	if err != nil{
-		zlib.ExitPrint(" addRuleOne redis err ")
+	log.Info("ruleStr : ",ruleStr, " rule struct : ",rule)
+	_ ,errs = redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(rule.Id).Add(ruleStr)...))
+	if errs != nil{
+		return false,err.NewErrorCode(603)
 	}
-	return res
+	return true,nil
+}
+
+func (ruleConfig *RuleConfig) CheckRuleByElement(rule Rule)(bool,error){
+	if rule.Id <= 0{
+		return false,err.NewErrorCode(604)
+	}
+	if rule.AppId <= 0{
+		return false,err.NewErrorCode(605)
+	}
+	if rule.CategoryKey == ""{
+		return false,err.NewErrorCode(616)
+	}
+	if rule.Flag <= 0{
+		return false,err.NewErrorCode(606)
+	}
+	if rule.Flag == RuleFlagTeamVS{
+		if rule.TeamVSPerson <= 0{
+			return false,err.NewErrorCode(608)
+		}
+
+		if rule.TeamVSPerson > RuleTeamVSPersonMax{
+			return false,err.NewErrorCodeReplace(609,err.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
+		}
+		//TeamVSPerson	int		//如果是N VS N 的类型，得确定 每个队伍几个人,必须上面的flag = 1 ，该变量才有用,目前最大是5
+	}else if rule.Flag == RuleFlagCollectPerson{
+		if rule.PersonCondition <= 0{
+			return false,err.NewErrorCode(610)
+		}
+
+		if rule.PersonCondition > RulePersonConditionMax{
+			return false,err.NewErrorCodeReplace(611,err.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
+		}
+	}else{
+		return false,err.NewErrorCode(607)
+	}
+	if rule.MatchTimeout < RuleMatchTimeoutMin || rule.MatchTimeout > RuleMatchTimeoutMax{
+		msg := make(map[int]string)
+		msg[0] = strconv.Itoa(RuleMatchTimeoutMin)
+		msg[1] = strconv.Itoa(RuleMatchTimeoutMax)
+		return false,err.NewErrorCodeReplace(612,msg)
+	}
+
+	if rule.SuccessTimeout < RuleSuccessTimeoutMin || rule.SuccessTimeout > RuleSuccessTimeoutMax{
+		msg := make(map[int]string)
+		msg[0] = strconv.Itoa(RuleSuccessTimeoutMin)
+		msg[1] = strconv.Itoa(RuleSuccessTimeoutMax)
+		return false,err.NewErrorCodeReplace(613,msg)
+	}
+
+	if rule.GroupPersonMax <= 0{
+		return false,err.NewErrorCode(614)
+	}
+
+	if rule.GroupPersonMax > RuleGroupPersonMax{
+		return false,err.NewErrorCodeReplace(615,err.MakeOneStringReplace(strconv.Itoa(RuleGroupPersonMax)))
+	}
+
+	//PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，如果是小组/团队，是计算平均值
+	return true,nil
+}
+
+func (ruleConfig *RuleConfig) CheckRuleById(ruleId int)(bool,error){
+	rule , ok := ruleConfig.GetById(ruleId)
+	if !ok {
+		msg := make(map[int]string)
+		msg[0] = strconv.Itoa(ruleId)
+		return false,err.NewErrorCodeReplace(602,msg)
+	}
+
+	return ruleConfig.CheckRuleByElement(rule)
+
+
 }
