@@ -74,7 +74,7 @@ func  (match *Match) calculateNumberTotal (sum int,groupPerson map[int]int)map[i
 							//ttt := [5]int{a,b,c,d,e}
 							ttt := [5]int{e,d,c,b,a}
 							result[inc] = ttt
-							log.Debug("5 x ",a," + 4 x",b,"+ 3 x ",c," + 2 x ",d , " 1 x ",e,"=",sum)
+							mylog.Debug("5 x ",a," + 4 x",b,"+ 3 x ",c," + 2 x ",d , " 1 x ",e,"=",sum)
 							inc++
 						}
 					}

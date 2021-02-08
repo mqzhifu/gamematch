@@ -20,6 +20,9 @@ type  Group struct {
 	Players 		[]Player
 	Addition		string	//请求方附加属性值
 	TeamId			int		//组队互相PK的时候，得成两个队伍
+	OutGroupId		int
+	CustomProp		string
+	MatchCode		string
 }
 
 func  (gamematch *Gamematch) NewGroupStruct(rule Rule)Group{
@@ -35,7 +38,9 @@ func  (gamematch *Gamematch) NewGroupStruct(rule Rule)Group{
 	group.SuccessTime = 0
 	group.Addition = ""
 	group.Players = nil
-
+	group.OutGroupId = 0
+	group.CustomProp = ""
+	group.MatchCode = ""
 	return group
 }
 
@@ -48,7 +53,7 @@ func  (gamematch *Gamematch) getRedisGroupIncKey(ruleId int)string{
 //获取并生成一个自增GROUP-ID
 func (gamematch *Gamematch) GetGroupIncId( ruleId int )  int{
 	key := gamematch.getRedisGroupIncKey(ruleId)
-	res,_ := redis.Int(redisDo("INCR",key))
+	res,_ := redis.Int(myredis.RedisDo("INCR",key))
 	return res
 }
 
@@ -76,6 +81,9 @@ func  GroupStrToStruct(redisStr string)Group{
 		Players 		:	players,
 		Addition		:	strArr[10],
 		TeamId			:	zlib.Atoi(strArr[11]),
+		OutGroupId		: 	zlib.Atoi(strArr[12]),
+		CustomProp		:  	strArr[13],
+		MatchCode		:	strArr[14],
 	}
 
 	return element
@@ -104,7 +112,10 @@ func  GroupStructToStr(group Group)string{
 			strconv.Itoa(  group.SuccessTime )+ separation +
 			playersIds + separation +
 			group.Addition +separation +
-			strconv.Itoa(  group.TeamId)
+			strconv.Itoa(  group.TeamId)+separation +
+			strconv.Itoa(  group.OutGroupId)+separation +
+			group.CustomProp+separation +
+			group.MatchCode
 
 	return content
 }

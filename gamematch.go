@@ -1,7 +1,6 @@
 package gamematch
 
 import (
-	"github.com/gomodule/redigo/redis"
 	"src/zlib"
 	"strconv"
 	"time"
@@ -17,15 +16,16 @@ import (
 	游戏属性	：游戏类型，也可以有子类型，如：不同的赛制。最终其实是分队列。不同的游戏忏悔分类，有不同的分类
 */
 
-
-
 const (
 	separation 				= "#"		//redis 内容-字符串分隔符
+	PayloadSeparation		= "%"
 	redisSeparation 		= "_"		//redis key 分隔符
 	IdsSeparation 			= ","		//多个ID 分隔符
 	redisPrefix 			= "match"	//整个服务的，redis 前缀
 	PlayerMatchingMaxTimes 	= 3			//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
 
+	ROOM_SERVICE_NAME		="gameroom"
+	MATCH_SERVICE_NAME		="gamematch"
 
 )
 type Gamematch struct {
@@ -44,26 +44,45 @@ type Player struct {
 	Id	int
 }
 
-var redisConn 		redis.Conn	//redis 连接实例
+var mylog 		*zlib.Log
+var myerr 		*zlib.Err
+var myredis 	*zlib.MyRedis
+var myservice	*zlib.Service
+var myetcd		*zlib.MyEtcd
+
+
 var playerStatus 	*PlayerStatus	//玩家状态类
-var log *zlib.Log
-var err *zlib.Err
 
-func NewSelf()*Gamematch{
-	log = zlib.NewLog("/data/www/golang/src/logs",zlib.LEVEL_ALL,15)
+
+//var logFlushFileDir string
+//var logLevel int
+//var logTarget int
+
+
+//var configCenter	*configcenter.Configer
+var roomServiceHost string
+//var myEtcd *MyEtcd
+//var myService *Service
+
+func NewGamematch(zlog *zlib.Log  ,zredis *zlib.MyRedis,zservice *zlib.Service ,zetcd *zlib.MyEtcd )(gamematch *Gamematch ,errs error){
+	mylog = zlog
+	myredis = zredis
+	myservice = zservice
+	myetcd = zetcd
+
 	container := getErrorCode()
-	err = zlib.NewErr(log,container)
+	mylog.Info("getErrorCode len : ",len(container))
+	if   len(container) == 0{
+		//return gamematch,err.NewErrorCode(900)
+		zlib.ExitPrint("getErrorCode len  = 0")
+	}
+	myerr = zlib.NewErr(mylog,container)
+	gamematch = new (Gamematch)
 
-	gamematch := new (Gamematch)
-
-	gamematch.RedisHost = "127.0.0.1"
-	gamematch.RedisPort = "6379"
-
-	redisConn ,_= NewRedisConn(gamematch.RedisHost,gamematch.RedisPort)
-	gamematch.RuleConfig,_= NewRuleConfig()
-	//if errs != nil{
-	//
-	//}
+	gamematch.RuleConfig, errs = NewRuleConfig()
+	if errs != nil{
+		zlib.ExitPrint(" New Redis conn err.",errs.Error())
+	}
 
 	gamematch.containerPush		= make(map[int]*Push)
 	gamematch.containerSign 	= make(	map[int]*QueueSign )	//容器 报名类
@@ -71,7 +90,7 @@ func NewSelf()*Gamematch{
 	gamematch.containerMatch	= make( 	map[int]*Match)
 
 
-	log.Info("init container....")
+	mylog.Info("init container....")
 	//实例化容器
 	for _,rule := range gamematch.RuleConfig.getAll(){
 		gamematch.containerPush[rule.Id] = NewPush(rule)
@@ -82,8 +101,10 @@ func NewSelf()*Gamematch{
 	}
 	playerStatus = NewPlayerStatus()
 
-	return gamematch
+	return gamematch,nil
 }
+
+
 
 
 func (gamematch *Gamematch)getContainerSignByRuleId(ruleId int)*QueueSign{
@@ -95,40 +116,25 @@ func (gamematch *Gamematch)getContainerSuccessByRuleId(ruleId int)*QueueSuccess{
 func (gamematch *Gamematch)getContainerPushByRuleId(ruleId int)*Push{
 	return gamematch.containerPush[ruleId]
 }
-
-//取消- 匹配
-func cancelJoin(ruleId int,player Player){
-
-}
-func (gamematch *Gamematch)testSignDel(ruleId int){
-	queueSign := gamematch.getContainerSignByRuleId(ruleId)
-	queueSign.delOneRule()
-
-	queueSuccess := gamematch.getContainerSuccessByRuleId(ruleId)
-	queueSuccess.delOneRule()
-
-	playerStatus.delAllPlayers()
-	zlib.ExitPrint(-55)
-}
 //报名 - 加入匹配队列
-func (gamematch *Gamematch) Sign(ruleId int ,players []Player  )error{
+func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, players []Player ,addition string )error{
 	rule,ok := gamematch.RuleConfig.GetById(ruleId)
 	if !ok{
-		return err.NewErrorCode(400)
+		return myerr.NewErrorCode(400)
 	}
 	lenPlayers := len(players)
 	if lenPlayers == 0{
-		return err.NewErrorCode(401)
+		return myerr.NewErrorCode(401)
 	}
 	queueSign := gamematch.getContainerSignByRuleId(ruleId)
 	//gamematch.testSignDel(2)
 
 	groupsTotal := queueSign.getAllGroupsWeightCnt()	//报名 小组总数
 	playersTotal := queueSign.getAllPlayersCnt()	//报名 玩家总数
-	log.Info(" action :  Sign , players : " + strconv.Itoa(lenPlayers) +" ,queue cnt : groupsTotal",groupsTotal ," , playersTotal",playersTotal)
+	mylog.Info(" action :  Sign , players : " + strconv.Itoa(lenPlayers) +" ,queue cnt : groupsTotal",groupsTotal ," , playersTotal",playersTotal)
 	now := zlib.GetNowTimeSecondToInt()
 
-	log.Debug("start get player status data :")
+	mylog.Debug("start get player status data :")
 	//检查，所有玩家的状态
 	playerStatusElementMap := make( map[int]PlayerStatusElement )
 	for _,player := range players{
@@ -140,21 +146,21 @@ func (gamematch *Gamematch) Sign(ruleId int ,players []Player  )error{
 		}else if playerStatusElement.Status == PlayerStatusSuccess{
 			msg := make(map[int]string)
 			msg[0] = strconv.Itoa(player.Id)
-			return err.NewErrorCodeReplace(403,msg)
+			return myerr.NewErrorCodeReplace(403,msg)
 		}else if playerStatusElement.Status == PlayerStatusSign{
 			isTimeout := playerStatus.checkSignTimeout(rule,playerStatusElement)
 			if !isTimeout{//未超时
 				msg := make(map[int]string)
 				msg[0] = strconv.Itoa(player.Id)
-				return err.NewErrorCodeReplace(402,msg)
+				return myerr.NewErrorCodeReplace(402,msg)
 			}
 			groupInfo := queueSign.getGroupElementById(playerStatusElement.GroupId)
 			if groupInfo.Person > 1{
 				msg := make(map[int]string)
 				msg[0] = strconv.Itoa(player.Id)
-				return err.NewErrorCodeReplace(405,msg)
+				return myerr.NewErrorCodeReplace(405,msg)
 			}
-			log.Notice("players sign timeout : delete one group... , gid : ",playerStatusElement.GroupId)
+			mylog.Notice("players sign timeout : delete one group... , gid : ",playerStatusElement.GroupId)
 			queueSign.delOneRuleOneGroup(playerStatusElement.GroupId,1)
 			//删除一个组，会连带着组里所有玩家的状态信息也被删除，这里再重新拉取一下，保证数据完整性
 			playerStatusElement = playerStatus.GetOne(player)
@@ -162,7 +168,7 @@ func (gamematch *Gamematch) Sign(ruleId int ,players []Player  )error{
 
 		playerStatusElementMap[player.Id] = playerStatusElement
 	}
-	log.Info("playerStatus data check finish.")
+	mylog.Info("playerStatus data check finish.")
 	//先计算一下权重平均值
 	var playerWeight float32
 	playerWeight = 0.00
@@ -182,8 +188,11 @@ func (gamematch *Gamematch) Sign(ruleId int ,players []Player  )error{
 	group.SignTimeout = expire
 	group.Person = len(players)
 	group.Weight = playerWeight
-
-	log.Info("newGroupId : ",group.Id , "player/group weight : " ,playerWeight ," now : ",now ," expire : ",expire )
+	group.OutGroupId = outGroupId
+	group.Addition = addition
+	group.CustomProp =  customProp
+	group.MatchCode = rule.CategoryKey
+	mylog.Info("newGroupId : ",group.Id , "player/group weight : " ,playerWeight ," now : ",now ," expire : ",expire )
 	//下面两行必须是原子操作，如果pushOne执行成功，但是upInfo没成功会导致报名队列里，同一个用户能再报名一次
 	//queueSign.Mutex.Lock()
 	queueSign.AddOne(group)
@@ -200,48 +209,184 @@ func (gamematch *Gamematch) Sign(ruleId int ,players []Player  )error{
 		playerStatus.upInfo( playerStatusElementMap[player.Id],newPlayerStatusElement)
 	}
 
-	log.Info(" once sign finish , success players : ",len(players))
+	mylog.Info(" once sign finish , success players : ",len(players))
 	return nil
 }
+type SignHttpData struct {
+	GroupId int
+	CustomProp	string
+	PlayersList []Player
+	RuleId int
+	Addition string
+}
 
+type SignCancelHttpData struct {
+	PlayerId	int
+	RuleId int
+}
+
+func (gamematch *Gamematch)CheckHttpSignCancelData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
+	matchCode,ok := jsonDataMap["matchCode"]
+	if !ok {
+		return data,myerr.NewErrorCode(450)
+	}
+	if matchCode == ""{
+		return data,myerr.NewErrorCode(450)
+	}
+
+	checkCodeRs := false
+	ruleId := 0
+	for _,rule := range gamematch.RuleConfig.getAll(){
+		if  rule.CategoryKey == matchCode{
+			ruleId = rule.Id
+			checkCodeRs = true
+			break
+		}
+	}
+	if !checkCodeRs{
+		return data,myerr.NewErrorCode(451)
+	}
+
+	playerId,ok := jsonDataMap["playerId"]
+	if !ok {
+		return data,myerr.NewErrorCode(452)
+	}
+	if playerId == ""{
+		return data,myerr.NewErrorCode(452)
+	}
+
+	data.PlayerId =  zlib.Atoi(playerId)
+	data.RuleId = ruleId
+	return data,nil
+
+
+}
+func (gamematch *Gamematch)CheckHttpSignData(jsonDataMap map[string]interface{})(data SignHttpData,errs error){
+	mylog.Debug("CheckHttpSignData",jsonDataMap)
+	matchCodeStr,ok := jsonDataMap["matchCode"]
+	if !ok {
+		return data,myerr.NewErrorCode(450)
+	}
+	matchCode := matchCodeStr.(string)
+	if matchCode == ""{
+		return data,myerr.NewErrorCode(450)
+	}
+
+
+	checkCodeRs := false
+	ruleId := 0
+	for _,rule := range gamematch.RuleConfig.getAll(){
+		if  rule.CategoryKey == matchCode{
+			ruleId = rule.Id
+			checkCodeRs = true
+			break
+		}
+	}
+	if !checkCodeRs{
+		return data,myerr.NewErrorCode(451)
+	}
+
+
+	groupIdStr,ok := jsonDataMap["groupId"]
+	if !ok {
+		return data,myerr.NewErrorCode(452)
+	}
+	//fmt.Printf("type:%T, value:%+v\n", groupIdStr,groupIdStr)
+	//groupId := zlib.Atoi(groupIdStr.(string))
+	groupId := int(groupIdStr.(float64))
+	if groupId == 0{
+		return data,myerr.NewErrorCode(452)
+	}
+
+	customProp := ""
+	customPropStr,ok := jsonDataMap["customProp"]
+	if !ok {
+		//return data,err.NewErrorCode(453)
+		customProp = ""
+	}else{
+		customProp = customPropStr.(string)
+	}
+
+
+	playerListMap,ok := jsonDataMap["playerList"]
+	if !ok {
+		return data,myerr.NewErrorCode(454)
+	}
+
+//[     map[matchAttr:map[age:10 sex:girl] uid:4] map[matchAttr:map[age:15 sex:man] uid:5]]
+	//fmt.Printf("unexpected type %T", playerListMap)
+	//fmt.Printf("playerListMap : %+v",playerListMap)
+	playerList ,ok := playerListMap.([]interface{})
+	if !ok{
+		return data,myerr.NewErrorCode(455)
+	}
+
+	var playerListStruct []Player
+	for _,v := range playerList{
+		row := v.(map[string]interface{})
+		zlib.MyPrint(row)
+		id ,ok := row["uid"]
+		if !ok {
+			return data,myerr.NewErrorCode(456)
+		}
+
+		pid := int(id.(float64))
+		playerListStruct = append(playerListStruct,Player{Id:pid})
+	}
+
+	addition := ""
+	additionStr,ok := jsonDataMap["addition"]
+	if ok {
+		addition = additionStr.(string)
+	}
+	data.GroupId = groupId
+	data.PlayersList = playerListStruct
+	data.CustomProp = customProp
+	data.RuleId = ruleId
+	data.Addition = addition
+	return data,nil
+}
 
 func (gamematch *Gamematch) DemonAll(){
 	queueList := gamematch.RuleConfig.getAll()
 	queueLen := len(queueList)
-	log.Info("start DemonAllRuleCheckSuccessTimeout ,  total : ",queueLen)
+	mylog.Info("start DemonAll ,  total : ",queueLen)
 	if queueLen <=0 {
-		log.Error(" rule is zero , no need")
+		mylog.Error(" rule is zero , no need")
 		return
 	}
 
 	for _,rule := range queueList{
+		if rule.Id == 1{
+			continue
+		}
 		checkRs,_ := gamematch.RuleConfig.CheckRuleByElement(rule)
-		log.Info(" check rule rs :",checkRs)
+		mylog.Info(" check rule rs :",checkRs)
 		if !checkRs{
-			log.Error("check rule element ,ruleId :",rule.Id , " continue ")
+			mylog.Error("check rule element ,ruleId :",rule.Id , " continue ")
 			continue
 		}
 
 		push := gamematch.getContainerPushByRuleId(rule.Id)
 		push.checkStatus()
-		zlib.ExitPrint(-999)
+
 		//定时，检查，所有报名的组是否发生变化，将发生变化的组，删除掉
-		queueSign := gamematch.getContainerSignByRuleId(rule.Id)
-		queueSign.CheckTimeout(push)
-
-		queueSuccess := gamematch.getContainerSuccessByRuleId(rule.Id)
-		queueSuccess.CheckTimeout(push)
-
-
-		match := gamematch.containerMatch[rule.Id]
-		match.start()
+		//queueSign := gamematch.getContainerSignByRuleId(rule.Id)
+		//queueSign.CheckTimeout(push)
+		//zlib.ExitPrint(12312333333)
+		//queueSuccess := gamematch.getContainerSuccessByRuleId(rule.Id)
+		//queueSuccess.CheckTimeout(push)
+		//
+		//
+		//match := gamematch.containerMatch[rule.Id]
+		//match.start()
 	}
 }
 
 func (gamematch *Gamematch) DelAll(){
-	log.Notice(" action :  DelAll")
+	mylog.Notice(" action :  DelAll")
 	keys := redisPrefix + "*"
-	redisDelAllByPrefix(keys)
+	myredis.RedisDelAllByPrefix(keys)
 }
 
 
@@ -256,6 +401,8 @@ func deadLoopBlock(sleepSecond time.Duration){
 		mySleepSecond(sleepSecond)
 	}
 }
+
+
 
 //进程结束，要清理一些数据
 //func processEndCleanData(){
@@ -281,9 +428,4 @@ func deadLoopBlock(sleepSecond time.Duration){
 //	zlib.MyPrint(" un lock...")
 //	queueSign.Mutex.Unlock()
 //}
-
-
-func logging(){
-
-}
 

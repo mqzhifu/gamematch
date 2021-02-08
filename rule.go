@@ -56,21 +56,21 @@ func (ruleConfig *RuleConfig) getRedisIncKey()string{
 
 func   NewRuleConfig ()(*RuleConfig,error){
 	obj := new (RuleConfig)
-	res,errs := redis.StringMap(redisDo("HGETALL",obj.getRedisKey()))
+	res,errs := redis.StringMap(myredis.RedisDo("HGETALL",obj.getRedisKey()))
 	if errs != nil{
 		msg := make(map[int]string)
 		msg[0] = errs.Error()
-		return obj,err.NewErrorCodeReplace(600,msg)
+		return obj,myerr.NewErrorCodeReplace(600,msg)
 	}
 	obj.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
 	if AddRuleFlag == 0{
 		if len(res) <= 0 {
-			return obj,err.NewErrorCode(601)
+			return obj,myerr.NewErrorCode(601)
 		}
 	}
 
-	log.Info("rule cnt : ",len(res))
+	mylog.Info("rule cnt : ",len(res))
 
 	//mapKey := 0
 	for k,v := range res{
@@ -131,7 +131,7 @@ func (ruleConfig *RuleConfig) getAll()map[int]Rule{
 
 func (ruleConfig *RuleConfig) getIncId( ) (int){
 	key := ruleConfig.getRedisIncKey()
-	res,_ := redis.Int(redisDo("INCR",key))
+	res,_ := redis.Int(myredis.RedisDo("INCR",key))
 	return res
 }
 
@@ -143,67 +143,67 @@ func (ruleConfig *RuleConfig) AddOne(rule Rule)(bool,error){
 	key := ruleConfig.getRedisKey()
 	//id := ruleConfig.getIncId()
 	ruleStr := ruleConfig.structToStr(rule)
-	log.Info("ruleStr : ",ruleStr, " rule struct : ",rule)
-	_ ,errs = redis.Int( redisDo("hset",redis.Args{}.Add(key).Add(rule.Id).Add(ruleStr)...))
+	mylog.Info("ruleStr : ",ruleStr, " rule struct : ",rule)
+	_ ,errs = redis.Int( myredis.RedisDo("hset",redis.Args{}.Add(key).Add(rule.Id).Add(ruleStr)...))
 	if errs != nil{
-		return false,err.NewErrorCode(603)
+		return false,myerr.NewErrorCode(603)
 	}
 	return true,nil
 }
 
 func (ruleConfig *RuleConfig) CheckRuleByElement(rule Rule)(bool,error){
 	if rule.Id <= 0{
-		return false,err.NewErrorCode(604)
+		return false,myerr.NewErrorCode(604)
 	}
 	if rule.AppId <= 0{
-		return false,err.NewErrorCode(605)
+		return false,myerr.NewErrorCode(605)
 	}
 	if rule.CategoryKey == ""{
-		return false,err.NewErrorCode(616)
+		return false,myerr.NewErrorCode(616)
 	}
 	if rule.Flag <= 0{
-		return false,err.NewErrorCode(606)
+		return false,myerr.NewErrorCode(606)
 	}
 	if rule.Flag == RuleFlagTeamVS{
 		if rule.TeamVSPerson <= 0{
-			return false,err.NewErrorCode(608)
+			return false,myerr.NewErrorCode(608)
 		}
 
 		if rule.TeamVSPerson > RuleTeamVSPersonMax{
-			return false,err.NewErrorCodeReplace(609,err.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
+			return false,myerr.NewErrorCodeReplace(609,myerr.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
 		}
 		//TeamVSPerson	int		//如果是N VS N 的类型，得确定 每个队伍几个人,必须上面的flag = 1 ，该变量才有用,目前最大是5
 	}else if rule.Flag == RuleFlagCollectPerson{
 		if rule.PersonCondition <= 0{
-			return false,err.NewErrorCode(610)
+			return false,myerr.NewErrorCode(610)
 		}
 
 		if rule.PersonCondition > RulePersonConditionMax{
-			return false,err.NewErrorCodeReplace(611,err.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
+			return false,myerr.NewErrorCodeReplace(611,myerr.MakeOneStringReplace(strconv.Itoa(RuleTeamVSPersonMax)))
 		}
 	}else{
-		return false,err.NewErrorCode(607)
+		return false,myerr.NewErrorCode(607)
 	}
 	if rule.MatchTimeout < RuleMatchTimeoutMin || rule.MatchTimeout > RuleMatchTimeoutMax{
 		msg := make(map[int]string)
 		msg[0] = strconv.Itoa(RuleMatchTimeoutMin)
 		msg[1] = strconv.Itoa(RuleMatchTimeoutMax)
-		return false,err.NewErrorCodeReplace(612,msg)
+		return false,myerr.NewErrorCodeReplace(612,msg)
 	}
 
 	if rule.SuccessTimeout < RuleSuccessTimeoutMin || rule.SuccessTimeout > RuleSuccessTimeoutMax{
 		msg := make(map[int]string)
 		msg[0] = strconv.Itoa(RuleSuccessTimeoutMin)
 		msg[1] = strconv.Itoa(RuleSuccessTimeoutMax)
-		return false,err.NewErrorCodeReplace(613,msg)
+		return false,myerr.NewErrorCodeReplace(613,msg)
 	}
 
 	if rule.GroupPersonMax <= 0{
-		return false,err.NewErrorCode(614)
+		return false,myerr.NewErrorCode(614)
 	}
 
 	if rule.GroupPersonMax > RuleGroupPersonMax{
-		return false,err.NewErrorCodeReplace(615,err.MakeOneStringReplace(strconv.Itoa(RuleGroupPersonMax)))
+		return false,myerr.NewErrorCodeReplace(615,myerr.MakeOneStringReplace(strconv.Itoa(RuleGroupPersonMax)))
 	}
 
 	//PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，如果是小组/团队，是计算平均值
@@ -215,7 +215,7 @@ func (ruleConfig *RuleConfig) CheckRuleById(ruleId int)(bool,error){
 	if !ok {
 		msg := make(map[int]string)
 		msg[0] = strconv.Itoa(ruleId)
-		return false,err.NewErrorCodeReplace(602,msg)
+		return false,myerr.NewErrorCodeReplace(602,msg)
 	}
 
 	return ruleConfig.CheckRuleByElement(rule)

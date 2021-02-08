@@ -34,7 +34,7 @@ func NewMatch(rule Rule,queueSign *QueueSign,queueSuccess *QueueSuccess,push *Pu
 }
 //一条rule 的匹配
 func (match *Match) start(){
-	log.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
+	mylog.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
 	for{
 	 	match.matching()
 		mySleepSecond(1)
@@ -44,11 +44,11 @@ func (match *Match) start(){
 func  (match *Match)  matching() {
 	playersTotal := match.QueueSign.getAllPlayersCnt()
 	groupsTotal := match.QueueSign.getAllGroupsWeightCnt()
-	log.Info("new once matching func , playersTotal total:",playersTotal , " groupsTotal : ",groupsTotal)
+	mylog.Info("new once matching func , playersTotal total:",playersTotal , " groupsTotal : ",groupsTotal)
 	match.clearMemberRange( )
 
 	if playersTotal == 0 || groupsTotal == 0{
-		log.Debug(" first total is empty ")
+		mylog.Debug(" first total is empty ")
 		return
 	}
 	//gamematch.getLock()
@@ -59,12 +59,12 @@ func  (match *Match)  matching() {
 	for i:=0;i<len(matchingRange);i++{
 		groupIds,isEmpty := match.matchingRange(matchingRange[i])
 		if isEmpty == 1{
-			log.Notice("signed players is empty ")
+			mylog.Notice("signed players is empty ")
 			return
 		}
 		if matchingRange[i] == FilterFlagAll{
 			if len(groupIds) >0 {
-				log.Info("FilterFlagAll hit...")
+				mylog.Info("FilterFlagAll hit...")
 				return
 			}
 		}
@@ -80,13 +80,13 @@ func  (match *Match)  matching() {
 func (match *Match) setMemberRange(rangeStart string,rangeEnd string){
 	match.rangeStart = rangeStart
 	match.rangeEnd = rangeEnd
-	log.Info(" set MemberVar Range ", rangeStart , " ", rangeEnd)
+	mylog.Info(" set MemberVar Range ", rangeStart , " ", rangeEnd)
 }
 
 func (match *Match) clearMemberRange( ){
 	match.rangeStart = ""
 	match.rangeEnd = ""
-	log.Info(" clear MemberVar : rangeStart  rangeEnd" )
+	mylog.Info(" clear MemberVar : rangeStart  rangeEnd" )
 }
 
 /*
@@ -97,7 +97,7 @@ flag
 */
 //匹配：范围性的，搜索与过滤
 func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]int,isEmpty int){
-	log.Info(" matchingRange , flag : ",flag)
+	mylog.Info(" matchingRange , flag : ",flag)
 	var tmpMin int
 	var tmpMax float32
 	rangeStart := ""
@@ -137,12 +137,12 @@ func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]in
 		}
 		match.setMemberRange(rangeStart,rangeEnd)
 		successGroupIds,isEmpty = match.searchFilterAll(flag)
-		log.Info("search result  range : ",rangeStart , " ~ ",rangeStart , " , rs , cnt:",len(successGroupIds) , "isEmpty : ",isEmpty)
+		mylog.Info("search result  range : ",rangeStart , " ~ ",rangeStart , " , rs , cnt:",len(successGroupIds) , "isEmpty : ",isEmpty)
 		if isEmpty == 1 && flag == FilterFlagAll{
-			log.Notice(" FilterFlagAll  isEmpty  = 1 ,break this foreach")
+			mylog.Notice(" FilterFlagAll  isEmpty  = 1 ,break this foreach")
 			return successGroupIds,isEmpty
 		}
-		log.Debug("successGroupIds",successGroupIds)
+		mylog.Debug("successGroupIds",successGroupIds)
 		//将计算好的组ID，团队，插入到 成功 队列中
 		if len(successGroupIds)> 0 {
 			match.successConditions( successGroupIds)
@@ -157,7 +157,7 @@ func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]in
 //匹配时，开始应该先做全局匹配
 func  (match *Match) searchFilterAll(  flag int )(successGroupIds map[int]map[int]int,isEmpty int){
 	//先做最大范围的搜索：所有报名匹配的玩家
-	log.Info(" searchFilterAll :  rangeStart ",  match.rangeStart , " , rangeEnd  ",match.rangeEnd ,  "  , flag " ,flag)
+	mylog.Info(" searchFilterAll :  rangeStart ",  match.rangeStart , " , rangeEnd  ",match.rangeEnd ,  "  , flag " ,flag)
 	playersTotal := 0
 	if flag == FilterFlagAll{
 		playersTotal = match.QueueSign.getAllPlayersCnt( )
@@ -165,7 +165,7 @@ func  (match *Match) searchFilterAll(  flag int )(successGroupIds map[int]map[in
 		playersTotal = match.QueueSign.getPlayersCntTotalByWeight(match.rangeStart,match.rangeEnd)
 	}
 	groupsTotal := match.QueueSign.getGroupsWeightCnt(match.rangeStart,match.rangeEnd)
-	log.Info(" playersTotal total:",playersTotal , " groupsTotal : ",groupsTotal)
+	mylog.Info(" playersTotal total:",playersTotal , " groupsTotal : ",groupsTotal)
 	if playersTotal <= 0 ||  groupsTotal <= 0 {
 		zlib.MyPrint("total is 0")
 		return successGroupIds,1
@@ -174,15 +174,15 @@ func  (match *Match) searchFilterAll(  flag int )(successGroupIds map[int]map[in
 	if match.Rule.Flag == RuleFlagTeamVS { //组队/对战类
 		personCondition = match.Rule.TeamVSPerson * 2
 	}
-	log.Info(" success condition when person =",personCondition)
+	mylog.Info(" success condition when person =",personCondition)
 
 	if playersTotal < personCondition{
-		log.Notice(" total < personCondition ")
+		mylog.Notice(" total < personCondition ")
 		return successGroupIds,1
 	}
 
 	if flag  == FilterFlagAll && playersTotal > personCondition * 2 {
-		log.Notice(" FilterFlagAll playersTotal > personCondition * 2 ,end this searchFilterAll ")
+		mylog.Notice(" FilterFlagAll playersTotal > personCondition * 2 ,end this searchFilterAll ")
 		return successGroupIds,0
 	}
 	//上面是基于<总数>的验证，没有问题后~,开始详情的计算
@@ -192,7 +192,7 @@ func  (match *Match) searchFilterAll(  flag int )(successGroupIds map[int]map[in
 }
 //前面是基于各种<总数>汇总，的各种验证，都没有问题了，这里才算是正式的细节匹配
 func   (match *Match) searchFilterDetail(  )(defaultSuccessGroupIds map[int]map[int]int){
-	log.Info(zlib.GetSpaceStr(3)+"searchFilterDetail , rule flag :",RuleFlagTeamVS)
+	mylog.Info(zlib.GetSpaceStr(3)+"searchFilterDetail , rule flag :",RuleFlagTeamVS)
 	//实例化，使用地址引用，后面的子函数，不用返回值了
 	successGroupIds := make(map[int]map[int]int)
 
@@ -212,7 +212,7 @@ func   (match *Match) searchFilterDetail(  )(defaultSuccessGroupIds map[int]map[
 	match.groupPersonCalculateNumberCombination( successGroupIds)
 	//因用的是map ,预先make 下，地址就已经分配了，可能有时，其实一个值都没有用到，但是len 依然是 > 0
 	if zlib.CheckMap2IntIsEmpty(successGroupIds)  {
-		zlib.MyPrint("searchFilterDetail is empty")
+		mylog.Notice("searchFilterDetail is empty")
 		return defaultSuccessGroupIds
 	}
 	//zlib.ExitPrint(-33)
@@ -232,13 +232,13 @@ func   (match *Match) searchFilterDetail(  )(defaultSuccessGroupIds map[int]map[
 func   (match *Match) groupPersonCalculateNumberCombination( successGroupIds map[int]map[int]int){
 	//这里吧，按说取，一条rule最大的值就行，没必要取全局最大的5，但是吧，后面的算法有点LOW，外层循环数就是5 ，除了矩阵，太麻烦，回头我再想想
 	groupPersonNum := match.QueueSign.getPlayersCntByWeight(match.rangeStart,match.rangeEnd)
-	log.Debug(zlib.GetSpaceStr(4)+"every group person total : ",groupPersonNum)
+	mylog.Debug(zlib.GetSpaceStr(4)+"every group person total : ",groupPersonNum)
 	//根据组人数，做排列组合，得到最终自然数和
 	calculateNumberTotalRs := match.calculateNumberTotal(match.Rule.PersonCondition,groupPersonNum)
-	log.Info(zlib.GetSpaceStr(4)+"calculateNumberTotalRs :",calculateNumberTotalRs)
+	mylog.Info(zlib.GetSpaceStr(4)+"calculateNumberTotalRs :",calculateNumberTotalRs)
 	//上面的函数，虽然计算完了，总人数是够了，但是也可能不会成团，比如：全是4人为一组报名，成团总人数却是奇数，偶数和是不可能出现奇数的
 	if len(calculateNumberTotalRs) == 0{
-		log.Notice(zlib.GetSpaceStr(4)+"calculateNumberTotal is empty")
+		mylog.Notice(zlib.GetSpaceStr(4)+"calculateNumberTotal is empty")
 		return
 	}
 	/*
@@ -258,12 +258,12 @@ func   (match *Match) groupPersonCalculateNumberCombination( successGroupIds map
 		successGroupIds[inc] = oneConditionGroupIds
 		inc++
 	}
-	log.Debug("groupPersonCalculateNumberCombination rs :",successGroupIds)
+	mylog.Debug("groupPersonCalculateNumberCombination rs :",successGroupIds)
 }
 func  (match *Match) oneConditionConvertGroup(oneOkPersonCondition [5]int)map[int]int{
 	oneConditionGroupIds := make(map[int]int)
 	inc := 0
-	log.Debug(oneOkPersonCondition)
+	mylog.Debug(oneOkPersonCondition)
 	someOneEmpty := 0	//redis 里取不出来数据了，或者取出的数据 小于 应取数据个数
 	for index,num := range oneOkPersonCondition{
 		person := index + 1
@@ -276,13 +276,13 @@ func  (match *Match) oneConditionConvertGroup(oneOkPersonCondition [5]int)map[in
 		groupIds  := match.QueueSign.getGroupPersonIndexList(person ,match.rangeStart,match.rangeEnd,0,num,true)
 		if len(groupIds) == 0{
 			someOneEmpty = 1
-			log.Notice("getGroupPersonIndexList empty")
+			mylog.Notice("getGroupPersonIndexList empty")
 			break
 		}
 
 		if len(groupIds) != num {
 			someOneEmpty = 1
-			log.Notice("getGroupPersonIndexList != num ", len(groupIds) , num)
+			mylog.Notice("getGroupPersonIndexList != num ", len(groupIds) , num)
 			break
 		}
 
@@ -303,16 +303,16 @@ func  (match *Match) oneConditionConvertGroup(oneOkPersonCondition [5]int)map[in
 }
 //N V N  ,互补数/对数
 func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
-	log.Info(zlib.GetSpaceStr(3)+ " action RuleFlagTeamVS logarithmic :")
+	mylog.Info(zlib.GetSpaceStr(3)+ " action RuleFlagTeamVS logarithmic :")
 
 	groupPersonNum := match.QueueSign.getPlayersCntByWeight(match.rangeStart,match.rangeEnd)
-	log.Debug(zlib.GetSpaceStr(2),"groupPersonTotal , ",groupPersonNum)
+	mylog.Debug(zlib.GetSpaceStr(2),"groupPersonTotal , ",groupPersonNum)
 	successGroupIdsInc := 0
 	//已处理过的互补数，如：4计算完了，1就不用算了，3计算完了，2其实也不用算了，
 	var processedNumber []int
 	wishSuccessGroups := 0 //预计应该成功的  团队~  用于统计debug
 	for personNum,personTotal := range groupPersonNum{
-		log.Debug(zlib.GetSpaceStr(4)+"foreach groupPerson , person " , personNum, " ,  personTotal  ",personTotal)
+		mylog.Debug(zlib.GetSpaceStr(4)+"foreach groupPerson , person " , personNum, " ,  personTotal  ",personTotal)
 		//判断是否已经处理过了
 		elementInArrIndex := zlib.ElementInArrIndex(processedNumber,personNum)
 		if elementInArrIndex != -1 {
@@ -321,15 +321,15 @@ func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
 		}
 		//5或者设置的最大值，已知最大的，且直接满足不做处理
 		if personNum == match.Rule.TeamVSPerson{
-			log.Debug(zlib.GetSpaceStr(4),"in max TeamVSPerson , no need remainder number")
+			mylog.Debug(zlib.GetSpaceStr(4),"in max TeamVSPerson , no need remainder number")
 			if personTotal <= 1 {//<5人组>如果只有一个的情况，满足不了条件
-				log.Notice(zlib.GetSpaceStr(4),"in max TeamVSPerson 1 , but personTotal <= 1 , continue")
+				mylog.Notice(zlib.GetSpaceStr(4),"in max TeamVSPerson 1 , but personTotal <= 1 , continue")
 				continue
 			}
 			maxNumber := match.getMinPersonNum(personTotal,personTotal)
-			log.Debug(zlib.GetSpaceStr(4),"maxNumber " , maxNumber)
+			mylog.Debug(zlib.GetSpaceStr(4),"maxNumber " , maxNumber)
 			if maxNumber <= 0{
-				log.Notice(zlib.GetSpaceStr(4),"in max TeamVSPerson 2 , but personTotal <= 1 , continue")
+				mylog.Notice(zlib.GetSpaceStr(4),"in max TeamVSPerson 2 , but personTotal <= 1 , continue")
 				continue
 			}
 			wishSuccessGroups += maxNumber / 2
@@ -354,7 +354,7 @@ func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
 			continue
 		}
 		maxNumber := match.getMinPersonNum(personTotal,groupPersonNum[needRemainderNum])
-		log.Debug(zlib.GetSpaceStr(4)+"needNumber : ",needRemainderNum , "needNumberPersonTotal", groupPersonNum[needRemainderNum], " maxNumber : ",maxNumber  )
+		mylog.Debug(zlib.GetSpaceStr(4)+"needNumber : ",needRemainderNum , "needNumberPersonTotal", groupPersonNum[needRemainderNum], " maxNumber : ",maxNumber  )
 		if maxNumber <= 0{
 			continue
 		}
@@ -373,8 +373,8 @@ func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
 
 		processedNumber =  append(processedNumber,needRemainderNum)
 	}
-	log.Debug("wishSuccessGroups :",wishSuccessGroups)
-	log.Info(zlib.GetSpaceStr(4),"logarithmic rs : ",successGroupIds)
+	mylog.Debug("wishSuccessGroups :",wishSuccessGroups)
+	mylog.Info(zlib.GetSpaceStr(4),"logarithmic rs : ",successGroupIds)
 	//zlib.ExitPrint(-11)
 }
 //互补数中，有一步是，取：两个互补数，人数的，最小的那个
@@ -391,7 +391,7 @@ func  (match *Match)getMinPersonNum(personTotal int,needRemainderNumPerson int)i
 }
 func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 	length := len(successGroupIds)
-	log.Info(" action in  successConditions  ...   len :   ",length)
+	mylog.Info(" action in  successConditions  ...   len :   ",length)
 	if match.Rule.Flag == RuleFlagCollectPerson{
 		zlib.MyPrint("successGroupIds",successGroupIds)
 		for _,oneCondition:=range successGroupIds{
@@ -416,7 +416,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 	}else{//组队互相PK
 		if length == 1{
 			match.groupPushBackCondition(successGroupIds[0])
-			log.Notice("successGroupIds length = 1 , break")
+			mylog.Notice("successGroupIds length = 1 , break")
 			return
 		}
 		if length % 2 > 0{
@@ -427,7 +427,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			successGroupIds[index] = nil
 			length--
 		}
-		log.Info("final success cnt : ",successGroupIds)
+		mylog.Info("final success cnt : ",successGroupIds)
 		var teamId int
 		var resultElement Result
 
@@ -440,7 +440,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 				groupIdsArr = make( map[int]int)
 				playerIdsArr = make( map[int]int)
 
-				log.Notice("groupId : ",resultElement.Id)
+				mylog.Notice("groupId : ",resultElement.Id)
 			}
 
 			for _,groupId := range successGroupIds[i]{
@@ -462,7 +462,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 }
 //取出来的groupIds 可能某些原因 最终并没有用上，但是得给塞回到redis里
 func (match *Match)groupPushBackCondition(oneCondition map[int]int){
-	log.Info("groupPushBackCondition")
+	mylog.Info("groupPushBackCondition")
 	for _,v := range oneCondition{
 		match.QueueSign.addOneGroupIndex(v)
 	}

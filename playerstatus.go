@@ -31,7 +31,7 @@ type PlayerStatus struct {
 }
 
 func NewPlayerStatus()*PlayerStatus{
-	log.Info("Global var :NewPlayerStatus")
+	mylog.Info("Global var :NewPlayerStatus")
 	playerStatus := new(PlayerStatus)
 	return playerStatus
 }
@@ -48,7 +48,7 @@ func (playerStatus *PlayerStatus) GetCommonRedisPrefix()string{
 
 func (playerStatus *PlayerStatus) GetOne(player Player)PlayerStatusElement{
 	key := playerStatus.getRedisKey(player.Id)
-	res ,err := redis.Values(redisConn.Do("HGETALL",key))
+	res ,err := redis.Values(myredis.RedisDo("HGETALL",key))
 	//zlib.ExitPrint(res,err)
 	if err != nil {
 		zlib.ExitPrint("redis.Do error :",err.Error())
@@ -98,7 +98,7 @@ func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement
 }
 func  (playerStatus *PlayerStatus)  upInfo(playerStatusElement PlayerStatusElement,newPlayerStatusElement PlayerStatusElement)(bool ,error){
 	//fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
-	log.Info("action Upinfo , old status :",playerStatusElement.Status , " new status :" ,newPlayerStatusElement.Status)
+	mylog.Info("action Upinfo , old status :",playerStatusElement.Status , " new status :" ,newPlayerStatusElement.Status)
 	newPlayerStatusElement.UTime = zlib.GetNowTimeSecondToInt()
 	playerStatus.setNewOne(newPlayerStatusElement)
 	return true,nil
@@ -111,14 +111,14 @@ func (playerStatus *PlayerStatus) upStatus(playerId int ,status int){
 	playerStatusElement := playerStatus.GetOne(player)
 	newPlayerStatusElement := playerStatusElement
 	newPlayerStatusElement.Status = status
-	log.Info("player up status , old status : ",playerStatusElement.Status , " new status : ",status)
+	mylog.Info("player up status , old status : ",playerStatusElement.Status , " new status : ",status)
 	playerStatus.upInfo(playerStatusElement,newPlayerStatusElement)
 }
 
 func  (playerStatus *PlayerStatus) setNewOne(playerStatusElement PlayerStatusElement ){
 	key := playerStatus.getRedisKey(playerStatusElement.PlayerId)
 	//res,err := redisConn.Do("HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
-	res,err  := redisDo("HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
+	res,err  := myredis.RedisDo("HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
 	if err != nil{
 		zlib.ExitPrint("setNewOne redis error")
 	}
@@ -153,21 +153,21 @@ func StructCovertStr(playerStatusElement interface{})string{
 }
 func (playerStatus *PlayerStatus)  delOneById(playerId int){
 	key := playerStatus.getRedisKey(playerId)
-	res,_ := redisDo("del",key)
-	log.Notice("playerStatus delOneById , id : ",playerId , " , rs : ", res)
+	res,_ := myredis.RedisDo("del",key)
+	mylog.Notice("playerStatus delOneById , id : ",playerId , " , rs : ", res)
 }
 
 func (playerStatus *PlayerStatus)  delOne(playerStatusElement PlayerStatusElement){
 	key := playerStatus.getRedisKey(playerStatusElement.PlayerId)
-	res,_ := redisDo("del",key)
-	log.Notice("playerStatus delOne , id : ",playerStatusElement.PlayerId , " rs : ",res)
+	res,_ := myredis.RedisDo("del",key)
+	mylog.Notice("playerStatus delOne , id : ",playerStatusElement.PlayerId , " rs : ",res)
 }
 //删除所有玩家状态值
 func  (playerStatus *PlayerStatus)  delAllPlayers(){
-	log.Info("delAllPlayers ")
+	mylog.Info("delAllPlayers ")
 	key := playerStatus.GetCommonRedisPrefix()
 	keys := key + "*"
-	redisDelAllByPrefix(keys)
+	myredis.RedisDelAllByPrefix(keys)
 
 }
 

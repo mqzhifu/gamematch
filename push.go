@@ -9,13 +9,14 @@ import (
 )
 
 const(
-	PushCategorySign 	= 1
-	PushCategorySuccess = 2
+	PushCategorySignTimeout 	= 1
+	PushCategorySuccess 		= 2
+	PushCategorySuccessTimeout	= 3
 
 	PushStatusWait		= 1
 	PushStatusRetry 	= 2
-	PushStatusOk		= 3
-	PushStatusFiled 	= 4
+	//PushStatusOk		= 3
+	//PushStatusFiled 	= 4
 
 
 
@@ -33,13 +34,20 @@ type PushElement struct {
 }
 
 type Push struct {
-	Mutex 	sync.Mutex
-	Rule 	Rule
+	Mutex 		sync.Mutex
+	Rule 		Rule
+	//queueSign 	*QueueSign
+	QueueSuccess	*QueueSuccess
 }
 
 func NewPush(rule Rule)*Push{
 	push := new(Push)
 	push.Rule = rule
+
+
+	//push.queueSign = NewQueueSign(rule)
+	//这里有个问题，循环 new
+	push.QueueSuccess = NewQueueSuccess(rule,nil)
 	return push
 }
 
@@ -56,7 +64,7 @@ func (push *Push)  getRedisCatePrefixKey(  )string{
 
 func (push *Push) GetPushIncId( )  int{
 	key := push.getRedisPushIncKey()
-	res,_ := redis.Int(redisDo("INCR",key))
+	res,_ := redis.Int(myredis.RedisDo("INCR",key))
 	return res
 }
 
@@ -77,7 +85,7 @@ func (push *Push)  getRedisPushIncKey()string{
 
 func (push *Push) getById (id int) (element PushElement) {
 	key := push.getRedisKeyPush(id)
-	res,_ := redis.String(redisDo("get",key))
+	res,_ := redis.String(myredis.RedisDo("get",key))
 	if res == ""{
 		return element
 	}
@@ -100,19 +108,18 @@ func  (push *Push) addOnePush (linkId int,category int ,payload string) int {
 		Payload : payload,
 	}
 	pushStr := push.pushStructToStr(pushElement)
-	res,err := redisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
-	zlib.MyPrint("addOnePush rs : ",res,err)
+	res,err := myredis.RedisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
+	mylog.Info("addOnePush rs : ",res,err)
 
 	pushKey := push.getRedisKeyPushStatus()
-	res,err = redisDo("zadd",redis.Args{}.Add(pushKey).Add(1).Add(id)...)
-	zlib.MyPrint("add push status : ",res,err)
+	res,err = myredis.RedisDo("zadd",redis.Args{}.Add(pushKey).Add(PushStatusWait).Add(id)...)
+	mylog.Info("add push status : ",res,err)
 
 	return id
 }
 
 func (push *Push)  pushStrToStruct(redisStr string )PushElement{
 	strArr := strings.Split(redisStr,separation)
-
 	result := PushElement{
 		Id:zlib.Atoi(strArr[0]),
 		LinkId 	:	zlib.Atoi(strArr[1]),
@@ -120,6 +127,8 @@ func (push *Push)  pushStrToStruct(redisStr string )PushElement{
 		Status : zlib.Atoi(strArr[3]),
 		UTime : zlib.Atoi(strArr[4]),
 		Times :  zlib.Atoi(strArr[5]),
+		Category: zlib.Atoi(strArr[6]),
+		Payload :  strArr[7],
 	}
 	return result
 }
@@ -131,62 +140,61 @@ func (push *Push) pushStructToStr(pushElement PushElement)string{
 		strconv.Itoa(pushElement.ATime) + separation +
 		strconv.Itoa(pushElement.Status) + separation +
 		strconv.Itoa(pushElement.UTime) + separation +
-		strconv.Itoa(pushElement.Times) + separation
+		strconv.Itoa(pushElement.Times) + separation +
+		strconv.Itoa(pushElement.Category) + separation +
+			pushElement.Payload + separation
 
 	return str
 }
 
 func (push *Push)   delAll(){
 	key := push.getRedisPrefixKey()
-	redisDo("del",key)
+	myredis.RedisDo("del",key)
 }
 
 func (push *Push)   delOneRule(){
-	log.Debug(" push delOneRule : ",push.getRedisCatePrefixKey())
+	mylog.Debug(" push delOneRule : ",push.getRedisCatePrefixKey())
 	push.delAllPush()
 	push.delAllStatus()
 }
 
 func  (push *Push)  delAllPush( ){
 	prefix := push.getRedisKeyPushPrefix()
-	res,_ := redis.Strings( redisDo("keys",prefix + "*"  ))
+	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
 	if len(res) == 0{
-		log.Notice(" GroupElement by keys(*) : is empty")
+		mylog.Notice(" GroupElement by keys(*) : is empty")
 		return
 	}
 	//zlib.ExitPrint(res,-200)
 	for _,v := range res{
-		res,_ := redis.Int(redisDo("del",v))
+		res,_ := redis.Int(myredis.RedisDo("del",v))
 		zlib.MyPrint("del group element v :",res)
 	}
 }
 
 func  (push *Push)  delAllStatus( ){
 	key := push.getRedisKeyPushStatus()
-	res,_ := redis.Strings( redisDo("del",key ))
-	log.Debug("delAllStatus :",res)
+	res,_ := redis.Strings( myredis.RedisDo("del",key ))
+	mylog.Debug("delAllStatus :",res)
 }
 
 func  (push *Push)  delOneStatus( pushId int){
 	key := push.getRedisKeyPushStatus()
-	res,_ :=  redisDo("ZREM",redis.Args{}.Add(key).Add(pushId) )
+	res,_ :=  myredis.RedisDo("ZREM",redis.Args{}.Add(key).Add(pushId) )
 	zlib.MyPrint(" delOneRuleOneResult res",res)
 }
 
 func  (push *Push)  delOnePush( id int){
 	key := push.getRedisKeyPush(id)
-	res,_ := redis.Strings( redisDo("del",key ))
+	res,_ := redis.Strings( myredis.RedisDo("del",key ))
 	zlib.MyPrint(" delOnePush res",res)
 
 	push.delOneStatus(id)
 }
 func  (push *Push) hook(id int,status int){
+	mylog.Info(" action hook")
+
 	element := push.getById(id)
-	if element.Category == PushCategorySign{
-
-	}else{
-
-	}
 	if status == PushStatusWait{
 		push.pushAndUpInfo(element,PushStatusRetry)
 	}else{
@@ -200,31 +208,80 @@ func  (push *Push) hook(id int,status int){
 				push.pushAndUpInfo(element,PushStatusRetry)
 			}
 		}
-
 	}
 }
-func  (push *Push)pushAndUpInfo(element PushElement,status int){
-	sendHttpRs := true
-	if sendHttpRs{
+func  (push *Push)pushAndUpInfo(element PushElement,upStatus int){
+	mylog.Debug("pushAndUpInfo",element,upStatus)
+
+	//zlib.ExitPrint(element.Category , PushCategorySignTimeout)
+	var httpRs zlib.ResponseMsgST
+	var err error
+	//if element.Category == PushCategorySignTimeout{//测试使用
+	//	return
+	//}
+	if element.Category == PushCategorySignTimeout ||  element.Category == PushCategorySuccessTimeout {
+		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		myGroup := GroupStrToStruct(payload)
+		httpRs,err = myservice.HttpPost("gameroom","v1/match/error",myGroup)
+	}else if element.Category == PushCategorySuccess{
+		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		thisResult := push.QueueSuccess.strToStruct (payload)
+
+		aaa:= push.QueueSuccess.GetResultById(thisResult.Id,1,0)
+		httpRs ,err = myservice.HttpPost("","v1/match/succ",aaa)
+	}
+
+	if err != nil{
+		msg := myerr.MakeOneStringReplace(err.Error())
+		myerr.NewErrorCodeReplace(911,msg)
+		push.upRetryPushInfo(element)
+		return
+	}
+
+	if(httpRs.Code == 0){
 		push.delOnePush(element.Id)
-	}else{
-		element.Status = status
-		element.UTime = zlib.GetNowTimeSecondToInt()
-		element.Times = element.Times + 1
-		key := push.getRedisKeyPush(element.Id)
-		pushStr := push.pushStructToStr(element)
-		res,err := redisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
-		zlib.MyPrint(res,err)
+		return
 	}
-}
 
+	if element.Category == PushCategorySignTimeout ||  element.Category == PushCategorySuccessTimeout {
+		if httpRs.Code == 116 || httpRs.Code ==  119{
+			//ErrGroupStatus   119 队伍当前不可操作（不要重试）
+			//ErrServerError 102 服务器内部错误
+			//ErrMarshalError 101 json解析错误
+			//ErrGroupLock 117 组队数据读写中
+			//ErrGroupExpire 116 组队过期或者不存在 （不要重试）
+			push.delOnePush(element.Id)
+			return
+		}
+	}else{
+
+	}
+
+}
+//失败且需要重试的PUSH-ELEMENT
+func  (push *Push)  upRetryPushInfo(element PushElement ){
+	element.Status = PushStatusRetry
+	element.UTime = zlib.GetNowTimeSecondToInt()
+	element.Times = element.Times + 1
+	key := push.getRedisKeyPush(element.Id)
+	pushStr := push.pushStructToStr(element)
+	res,err := myredis.RedisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
+
+	statuskey := push.getRedisKeyPushStatus()
+
+	push.delOneStatus(element.Id)
+	res,err = myredis.RedisDo("zadd",redis.Args{}.Add(statuskey).Add(PushStatusRetry).Add(element.Id)...)
+	mylog.Info("add push status : ",res,err)
+
+
+}
 func  (push *Push)  checkStatus(){
-	log.Info("start one rule checkStatus : ")
+	mylog.Info("start one rule checkStatus : ")
 	key := push.getRedisKeyPushStatus()
 
 	inc := 1
 	for {
-		log.Info("loop inc : ",inc )
+		mylog.Info("loop inc : ",inc )
 		if inc >= 2147483647{
 			inc = 0
 		}
@@ -233,21 +290,21 @@ func  (push *Push)  checkStatus(){
 		push.checkOneByStatus(key,PushStatusWait)
 		push.checkOneByStatus(key,PushStatusRetry)
 
+		mySleepSecond(1)
 	}
 
 }
 
 func  (push *Push)  checkOneByStatus(key string,status int){
-	res,err := redis.IntMap(  redisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
-	log.Info("sign timeout group element total : ",len(res))
+	res,err := redis.Ints(  myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
+	mylog.Info("sign timeout group element total : ",len(res))
 	if err != nil{
-		log.Error("redis keys err :",err.Error())
+		mylog.Error("redis keys err :",err.Error())
 		return
 	}
 
 	if len(res) == 0{
-		log.Notice(" empty , no need process")
-		mySleepSecond(1)
+		mylog.Notice(" empty , no need process")
 	}
 	for _,id := range res{
 		push.hook(id,status)
