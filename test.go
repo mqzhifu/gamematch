@@ -7,8 +7,7 @@ var AddRuleFlag = 0
 
 
 func Test(){
-	//AddRuleFlag = 1
-
+	//实例化-<日志>-组件
 	logOption := zlib.LogOption{
 		OutFilePath : "/data/www/golang/src/logs",
 		Level : zlib.LEVEL_ALL,
@@ -18,7 +17,7 @@ func Test(){
 	if errs != nil{
 		zlib.ExitPrint("new log err",errs.Error())
 	}
-
+	//实例化-<redis>-组件
 	redisOption := zlib.RedisOption{
 		Host: "127.0.0.1",
 		Port: "6379",
@@ -28,7 +27,7 @@ func Test(){
 	if errs != nil{
 		zlib.ExitPrint("new redis err",errs.Error())
 	}
-
+	//实例化-<etcd>-组件
 	url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
 	etcdOption := zlib.EtcdOption{
 		FindEtcdUrl: url,
@@ -38,33 +37,39 @@ func Test(){
 	if errs != nil{
 		zlib.ExitPrint("NewMyEtcdSdk err",errs.Error())
 	}
-
+	//实例化-<服务发现>-组件
 	serviceOption := zlib.ServiceOption{
 		Etcd: myetcd,
 		Log: mylog,
+		Prefix: SERVICE_PREFIX,
 	}
+
+	myHost := "0.0.0.1"
+	myPort := "5678"
+
+
 	myservice := zlib.NewService(serviceOption)
-	myservice.RegOne("gamematch","127.0.0.1:5678")
-
+	//将自己注册成一个服务
+	myservice.RegOne(SERVICE_MATCH_NAME,myHost+":"+myPort)
+	//最后，终于，实例化：匹配机制
 	myGamematch,_ := NewGamematch(mylog,myredis,myservice,myetcd)
-	//startHttpd(*myGamematch)
+	//myGamematch.DemonAll()
 
-	//clear(*myGamematch)
+	myHttpdOption :=  HttpdOption{
+		Host: myHost,
+		Port: myPort,
+		Log : mylog,
+	}
+	go myGamematch.startHttpd(myHttpdOption)
+
+	deadLoopBlock(1)
 
 	//TestAddRuleData(*myGamematch)
 	//TestSign(*myGamematch)
 	//TestMatching(*myGamematch)
-
-	TestUnitCase(*myGamematch)
-
+	//TestUnitCase(*myGamematch)
 	//zlib.ExitPrint(-999)
 }
-
-func startHttpd(myGamematch Gamematch){
-	httpd := NewHttpd(2345,"0.0.0.0")
-	httpd.Start()
-}
-
 
 func clear(myGamematch Gamematch){
 	myGamematch.DelAll()

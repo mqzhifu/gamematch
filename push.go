@@ -8,19 +8,6 @@ import (
 	"sync"
 )
 
-const(
-	PushCategorySignTimeout 	= 1
-	PushCategorySuccess 		= 2
-	PushCategorySuccessTimeout	= 3
-
-	PushStatusWait		= 1
-	PushStatusRetry 	= 2
-	//PushStatusOk		= 3
-	//PushStatusFiled 	= 4
-
-
-
-)
 //匹配成功后，会推送给3方，
 type PushElement struct {
 	Id  		int
@@ -195,15 +182,19 @@ func  (push *Push) hook(id int,status int){
 	mylog.Info(" action hook")
 
 	element := push.getById(id)
+	//fmt.Printf("%+v", element)
+	//zlib.ExitPrint(111)
 	if status == PushStatusWait{
 		push.pushAndUpInfo(element,PushStatusRetry)
 	}else{
 		if element.Times >= len(PushRetryPeriod) {
+			mylog.Notice(" push retry time > maxRetryTime")
 			push.delOnePush(id)
 		}else{
 			time := PushRetryPeriod[element.Times]
 
 			d := zlib.GetNowTimeSecondToInt() - element.UTime
+			mylog.Info("this time : ",time,"now :",zlib.GetNowTimeSecondToInt() , " - element.UTime ",element.UTime , " = ",d)
 			if d >= time{
 				push.pushAndUpInfo(element,PushStatusRetry)
 			}
@@ -226,15 +217,21 @@ func  (push *Push)pushAndUpInfo(element PushElement,upStatus int){
 	}else if element.Category == PushCategorySuccess{
 		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
 		thisResult := push.QueueSuccess.strToStruct (payload)
+		postData:= push.QueueSuccess.GetResultById(thisResult.Id,1,0)
+		//fmt.Printf("postData : %+v",postData)
+		//zlib.ExitPrint(payload)
 
-		aaa:= push.QueueSuccess.GetResultById(thisResult.Id,1,0)
-		httpRs ,err = myservice.HttpPost("","v1/match/succ",aaa)
+		httpRs ,err = myservice.HttpPost("gameroom","v1/match/succ",postData)
+	}else{
+		mylog.Error("element.Category error.")
+		return
 	}
 
 	if err != nil{
+		push.upRetryPushInfo(element)
+
 		msg := myerr.MakeOneStringReplace(err.Error())
 		myerr.NewErrorCodeReplace(911,msg)
-		push.upRetryPushInfo(element)
 		return
 	}
 
@@ -296,6 +293,7 @@ func  (push *Push)  checkStatus(){
 }
 
 func  (push *Push)  checkOneByStatus(key string,status int){
+	mylog.Info("checkOneByStatus :",status)
 	res,err := redis.Ints(  myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
 	mylog.Info("sign timeout group element total : ",len(res))
 	if err != nil{

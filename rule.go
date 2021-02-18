@@ -1,23 +1,14 @@
 package gamematch
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"src/zlib"
 	"strconv"
 	"strings"
 )
-const(
-	RuleFlagTeamVS = 1
-	RuleFlagCollectPerson = 2
-	RuleGroupPersonMax = 5
-	RuleTeamVSPersonMax			= 10  //组队互相PK，每个队最多人数
-	RulePersonConditionMax = 100	//N人组团，最大人数
 
-	RuleMatchTimeoutMax =	60
-	RuleMatchTimeoutMin = 3
-	RuleSuccessTimeoutMax = 600
-	RuleSuccessTimeoutMin = 60
-)
 //匹配规则 - 配置 ,像： 附加属性
 type Rule struct {
 	Id 				int
@@ -42,6 +33,18 @@ type PlayerWeight struct {
 	Flag		int		//1、计算权重平均的区间的玩家，2、权重越高的匹配越快
 }
 
+type GamesMatchConfig struct {
+	GamesId    int    `json:"games_id"`    //游戏ID
+	Name       string `json:"name"`        //规则名称
+	Status     int    `json:"status"`      //规则状态：1上线 2下线 3删除
+	MatchCode  string `json:"match_code"`  //匹配代码
+	TeamType   int    `json:"team_type"`   //团队类型 1各自为战 2对称团队战
+	MaxPlayers int    `json:"max_players"` //匹配最大人数 如团队战代表每个队伍人数
+	Rule       string `json:"rule"`        //表达式匹配规则
+	Timeout    int    `json:"timeout"`     //匹配超时时间
+	Fps        int    `json:"fps"`         //帧率
+}
+
 type RuleConfig struct {
 	Data map[int]Rule
 }
@@ -54,34 +57,85 @@ func (ruleConfig *RuleConfig) getRedisIncKey()string{
 	return redisPrefix + redisSeparation + "rule" + redisSeparation + "inc"
 }
 
+//初始化
 func   NewRuleConfig ()(*RuleConfig,error){
-	obj := new (RuleConfig)
-	res,errs := redis.StringMap(myredis.RedisDo("HGETALL",obj.getRedisKey()))
-	if errs != nil{
-		msg := make(map[int]string)
-		msg[0] = errs.Error()
-		return obj,myerr.NewErrorCodeReplace(600,msg)
-	}
-	obj.Data = make(map[int]Rule)
+	rule := new (RuleConfig)
+	rule.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
-	if AddRuleFlag == 0{
-		if len(res) <= 0 {
-			return obj,myerr.NewErrorCode(601)
-		}
+	ruleList := rule.getByEtcd( )
+	if len(ruleList) <= 0 {
+		return rule,myerr.NewErrorCode(601)
 	}
 
-	mylog.Info("rule cnt : ",len(res))
-
-	//mapKey := 0
-	for k,v := range res{
-		key := zlib.Atoi(k)
-		myRule := obj.strToStruct(v)
-		obj.Data[key] = myRule
-	}
-	//zlib.ExitPrint(obj.Data)
-	return obj,nil
+	mylog.Info("rule cnt : ",len(ruleList))
+	return rule,nil
 }
 
+func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
+	etcdRuleList := myetcd.GetListByPrefix(RuleEtcdConfigPrefix)
+	ruleList := make(map[int]Rule)
+	if len(etcdRuleList) == 0{
+		return ruleList
+	}
+	i := 1
+	for k,v := range etcdRuleList{
+		matchCode := strings.Replace(k,RuleEtcdConfigPrefix,"",-1)
+		matchCode = strings.Trim(matchCode," ")
+		matchCode = strings.Trim(matchCode,"/")
+		if k == ""{
+			myerr.NewErrorCode(620)
+			continue
+		}
+		if v == ""{
+			myerr.NewErrorCode(621)
+			continue
+		}
+		gamesMatchConfig := GamesMatchConfig{}
+		err := json.Unmarshal( []byte(v), & gamesMatchConfig)
+		if err != nil{
+			msg := myerr.MakeOneStringReplace(err.Error())
+			myerr.NewErrorCodeReplace(622,msg)
+			continue
+		}
+
+		playerWeightRow := PlayerWeight{}
+		ruleRow := Rule{
+			Id: i,
+			AppId: i,
+			CategoryKey : matchCode,
+			MatchTimeout: gamesMatchConfig.Timeout,
+			SuccessTimeout: gamesMatchConfig.Timeout,
+			IsSupportGroup: 1,
+
+			Flag:gamesMatchConfig.TeamType,
+			TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
+			PersonCondition: gamesMatchConfig.MaxPlayers,
+			GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
+			PlayerWeight: playerWeightRow,
+		}
+		fmt.Printf("%+v",gamesMatchConfig)
+		//zlib.ExitPrint(gamesMatchConfig)
+		_,err =  ruleConfig.CheckRuleByElement(ruleRow)
+		//zlib.ExitPrint(err)
+		if err != nil{
+			//myerr.NewErrorCode(621)
+			continue
+		}
+		ruleList[i] = ruleRow
+		i++
+	}
+	//zlib.ExitPrint(ruleList)
+	return ruleList
+
+}
+//func (ruleConfig *RuleConfig)getByRedis(){
+//	res,errs := redis.StringMap(myredis.RedisDo("HGETALL",ruleConfig.getRedisKey()))
+//	if errs != nil{
+//		msg := make(map[int]string)
+//		msg[0] = errs.Error()
+//		return obj,myerr.NewErrorCodeReplace(600,msg)
+//	}
+//}
 func (ruleConfig *RuleConfig)strToStruct(redisStr string)Rule{
 
 	strArr := strings.Split(redisStr,separation)

@@ -7,12 +7,6 @@ import (
 	"strconv"
 )
 
-const (
-	PlayerStatusNotExist = 1//redis中还没有该玩家信息
-	PlayerStatusSign = 2	//已报名，等待匹配
-	PlayerStatusSuccess = 3	//匹配成功，等待拿走
-)
-
 // 1. 等待计算   2计算中   3匹配成功
 type PlayerStatusElement struct {
 	PlayerId 		int

@@ -43,6 +43,7 @@ func (queueSuccess *QueueSuccess)NewResult( )Result{
 		Teams	: nil,
 		GroupIds: nil,
 		PlayerIds : nil,
+		MatchCode: queueSuccess.Rule.CategoryKey,
 	}
 	return result
 }
@@ -165,6 +166,7 @@ func (queueSuccess *QueueSuccess)  strToStruct(redisStr string )Result{
 		PlayerIds : zlib.ArrStringCoverArrInt(PlayerIds),
 		GroupIds :  zlib.ArrStringCoverArrInt(GroupIds),
 		PushId: zlib.Atoi(strArr[6]),
+		MatchCode: strArr[7],
 	}
 	return result
 }
@@ -182,7 +184,8 @@ func (queueSuccess *QueueSuccess) structToStr(result Result)string{
 		TeamsStr + separation +
 		PlayerIds + separation +
 		GroupIds + separation +
-		strconv.Itoa( result.PushId)
+		strconv.Itoa( result.PushId)+separation +
+			result.MatchCode
 
 	return content
 }

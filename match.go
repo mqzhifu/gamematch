@@ -6,12 +6,6 @@ import (
 	"sync"
 )
 
-const (
-	FilterFlagAll     =1
-	FilterFlagBlock	  =2
-	FilterFlagBlockInc=3
-)
-
 type Match struct {
 	Mutex 	sync.Mutex
 	Rule 	Rule
@@ -312,7 +306,7 @@ func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
 	var processedNumber []int
 	wishSuccessGroups := 0 //预计应该成功的  团队~  用于统计debug
 	for personNum,personTotal := range groupPersonNum{
-		mylog.Debug(zlib.GetSpaceStr(4)+"foreach groupPerson , person " , personNum, " ,  personTotal  ",personTotal)
+		mylog.Debug(zlib.GetSpaceStr(4)+"foreach groupPerson , person " , personNum, " ,  personTotal  ",personTotal , "successGroupIdsInc",successGroupIdsInc)
 		//判断是否已经处理过了
 		elementInArrIndex := zlib.ElementInArrIndex(processedNumber,personNum)
 		if elementInArrIndex != -1 {
@@ -335,15 +329,14 @@ func  (match *Match)logarithmic( successGroupIds map[int]map[int]int){
 			wishSuccessGroups += maxNumber / 2
 			//取出集合中，所有人数为5的组ids
 			groupIds := match.QueueSign.getGroupPersonIndexList(match.Rule.TeamVSPerson,"-inf","+inf",0,maxNumber,true)
-			for i:=0;i < maxNumber;i++{
+			for i:=0;i < maxNumber / 2;i++{
 				tmp := make(map[int]int)
 				tmp[0] = groupIds[i]
-				i++
-				tmp[1] = i
+				tmp[1] = groupIds[i+1]
 				successGroupIds[successGroupIdsInc] = tmp
 				successGroupIdsInc++
 			}
-			zlib.MyPrint("groupIds",groupIds)
+			zlib.MyPrint("person 5 final groupIds",groupIds)
 			continue
 		}
 
@@ -419,21 +412,26 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			mylog.Notice("successGroupIds length = 1 , break")
 			return
 		}
-		if length % 2 > 0{
-			index := len(successGroupIds)-1
-			//这里是把最后一个奇数置 空，但是还得把这个值 再给塞回到redis里
-			match.groupPushBackCondition(successGroupIds[index])
-			//delete(successGroupIds,successGroupIds[index])
-			successGroupIds[index] = nil
-			length--
-		}
-		mylog.Info("final success cnt : ",successGroupIds)
+		//if length % 2 > 0{
+		//	index := len(successGroupIds)-1
+		//	//这里是把最后一个奇数置 空，但是还得把这个值 再给塞回到redis里
+		//	match.groupPushBackCondition(successGroupIds[index])
+		//	//delete(successGroupIds,successGroupIds[index])
+		//	successGroupIds[index] = nil
+		//	length--
+		//}
+		mylog.Info("final success cnt : ",successGroupIds , " length : ",length)
 		var teamId int
 		var resultElement Result
 
 		var groupIdsArr map[int]int
 		var playerIdsArr map[int]int
 		for i:=0;i<length;i++ {
+			//zlib.MyPrint(successGroupIds[i],i)
+			if len(successGroupIds[i]) == 1{
+				mylog.Info(" has a single")
+				continue
+			}
 			if i % 2 == 0{
 				resultElement = match.QueueSuccess.NewResult()
 				teamId = 1
@@ -457,7 +455,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 				match.QueueSuccess.addOne(resultElement ,match.Push)
 			}
 		}
-		zlib.ExitPrint(123123)
+		//zlib.ExitPrint(123123)
 	}
 }
 //取出来的groupIds 可能某些原因 最终并没有用上，但是得给塞回到redis里

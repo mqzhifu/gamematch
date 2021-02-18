@@ -53,6 +53,14 @@ func getErrorCode() (container []string) {
 	container = append(container, "615,GroupPersonMax > {0},error,GroupPersonMax")
 	container = append(container, "616,CategoryKey is empty,error,CategoryKey为空")
 
+	container = append(container, "620, etcd rule matchCode is empty ,error, ")
+	container = append(container, "621, etcd rule value is empty,error, ")
+	container = append(container, "622, etcd rule json.Unmarshal err {0},error, ")
+	//container = append(container, "623, etcd rule matchCode is empty,error, ")
+	//container = append(container, "624, etcd rule matchCode is empty,error, ")
+	//container = append(container, "625, etcd rule matchCode is empty,error, ")
+
+
 	//http 相关
 	container = append(container, "800,http content = 0 ,post data is empty ,error,该接口需要POST数据，但数据为空")
 	container = append(container, "801,http no route this uri ,error,请求URI无法路由到具体方法")

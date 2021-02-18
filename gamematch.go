@@ -6,28 +6,6 @@ import (
 	"time"
 )
 
-/*
-	匹配类型 - 规则
-	1. N人匹配 ，只要满足N人，即成功
-	2. N人匹配 ，划分为2个队，A队满足N人，B队满足N人，即成功
-
-	权重		：根据某个用户上的某个特定属性值，计算出权重，优先匹配
-	组		：ABC是一个组，一起参与匹配，那这3个人匹配的时候是不能分开的
-	游戏属性	：游戏类型，也可以有子类型，如：不同的赛制。最终其实是分队列。不同的游戏忏悔分类，有不同的分类
-*/
-
-const (
-	separation 				= "#"		//redis 内容-字符串分隔符
-	PayloadSeparation		= "%"
-	redisSeparation 		= "_"		//redis key 分隔符
-	IdsSeparation 			= ","		//多个ID 分隔符
-	redisPrefix 			= "match"	//整个服务的，redis 前缀
-	PlayerMatchingMaxTimes 	= 3			//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
-
-	ROOM_SERVICE_NAME		="gameroom"
-	MATCH_SERVICE_NAME		="gamematch"
-
-)
 type Gamematch struct {
 	RedisHost 			string
 	RedisPort 			string
@@ -69,13 +47,14 @@ func NewGamematch(zlog *zlib.Log  ,zredis *zlib.MyRedis,zservice *zlib.Service ,
 	myredis = zredis
 	myservice = zservice
 	myetcd = zetcd
-
+	//初始化-错误码
 	container := getErrorCode()
 	mylog.Info("getErrorCode len : ",len(container))
 	if   len(container) == 0{
 		//return gamematch,err.NewErrorCode(900)
 		zlib.ExitPrint("getErrorCode len  = 0")
 	}
+	//初始化-错误/异常 类
 	myerr = zlib.NewErr(mylog,container)
 	gamematch = new (Gamematch)
 
@@ -225,6 +204,41 @@ type SignCancelHttpData struct {
 	RuleId int
 }
 
+func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
+	//matchCode,ok := jsonDataMap["matchCode"]
+	//if !ok {
+	//	return data,myerr.NewErrorCode(450)
+	//}
+	//if matchCode == ""{
+	//	return data,myerr.NewErrorCode(450)
+	//}
+	//
+	//checkCodeRs := false
+	//ruleId := 0
+	//for _,rule := range gamematch.RuleConfig.getAll(){
+	//	if  rule.CategoryKey == matchCode{
+	//		ruleId = rule.Id
+	//		checkCodeRs = true
+	//		break
+	//	}
+	//}
+	//if !checkCodeRs{
+	//	return data,myerr.NewErrorCode(451)
+	//}
+	//
+	//playerId,ok := jsonDataMap["playerId"]
+	//if !ok {
+	//	return data,myerr.NewErrorCode(452)
+	//}
+	//if playerId == ""{
+	//	return data,myerr.NewErrorCode(452)
+	//}
+	//
+	//data.PlayerId =  zlib.Atoi(playerId)
+	//data.RuleId = ruleId
+	return data,nil
+}
+
 func (gamematch *Gamematch)CheckHttpSignCancelData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
 	matchCode,ok := jsonDataMap["matchCode"]
 	if !ok {
@@ -258,7 +272,6 @@ func (gamematch *Gamematch)CheckHttpSignCancelData(jsonDataMap map[string]string
 	data.PlayerId =  zlib.Atoi(playerId)
 	data.RuleId = ruleId
 	return data,nil
-
 
 }
 func (gamematch *Gamematch)CheckHttpSignData(jsonDataMap map[string]interface{})(data SignHttpData,errs error){
@@ -376,8 +389,7 @@ func (gamematch *Gamematch) DemonAll(){
 		//zlib.ExitPrint(12312333333)
 		//queueSuccess := gamematch.getContainerSuccessByRuleId(rule.Id)
 		//queueSuccess.CheckTimeout(push)
-		//
-		//
+
 		//match := gamematch.containerMatch[rule.Id]
 		//match.start()
 	}
@@ -387,6 +399,11 @@ func (gamematch *Gamematch) DelAll(){
 	mylog.Notice(" action :  DelAll")
 	keys := redisPrefix + "*"
 	myredis.RedisDelAllByPrefix(keys)
+}
+
+func (gamematch *Gamematch) startHttpd(httpdOption HttpdOption){
+	httpd := NewHttpd(httpdOption,gamematch)
+	httpd.Start()
 }
 
 
