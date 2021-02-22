@@ -1,5 +1,7 @@
 package gamematch
 
+import "zlib"
+
 /*
 	匹配类型 - 规则
 	1. N人匹配 ，只要满足N人，即成功
@@ -22,17 +24,22 @@ const(
 	RuleSuccessTimeoutMax 	= 600	//匹配成功后，最大超时时间
 	RuleSuccessTimeoutMin 	= 60	//匹配成功后，最短超时时间
 
-	RuleEtcdConfigPrefix = "/v1/matches/"	//etcd中  ， 存放 rule  集合的前缀
+	RuleEtcdConfigPrefix = "/v1/conf/matches/"	//etcd中  ， 存放 rule  集合的前缀
 )
 //微服务
 const(
-	SERVICE_PREFIX = "/service"		//微服务前缀
+	SERVICE_PREFIX = "/v1/service"		//微服务前缀
 
-	SERVICE_ROOM_NAME		="gameroom"
+	SERVICE_MSG_SERVER		="msgServer"
 	SERVICE_MATCH_NAME		="gamematch"
 )
 //公共
 const (
+	LOG_BASE_DIR 			= "/data/www/golang/src/logs"
+	LOG_FILE_NAME			= "gamematch"
+	LOG_LEVEL				= zlib.LEVEL_ALL
+	LOG_TARGET 				= 15
+
 	separation 				= "#"		//redis 内容-字符串分隔符
 	PayloadSeparation		= "%"		//push时的内容，缓存进redis时
 	redisSeparation 		= "_"		//redis key 分隔符

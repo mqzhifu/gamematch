@@ -19,7 +19,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "402,sign err Status:PlayerStatusSign  id:{0} ,error,玩家状态是正在报名中~不能重复报名")
 	container = append(container, "403,sign err Status:PlayerStatusSuccess  id:{0} ,error,玩家状态为已成功匹配，等待ROOM服务接收成功数据")
 	container = append(container, "405,sign err Status:PlayerStatusSign id:{0} but timeout and group person > 1 ,error,玩家状态为报名中，且已失效，等待后台任务回收，并且该玩家所有组的人数大于1")
-
+	container = append(container, "406,players is timeout : 0,error,报名的玩家数为空")
 
 	container = append(container, "450,matchCode is null,error,matchCode为空")
 	container = append(container, "451,matchCode not exist in db,error,matchCode在DB中找不见")
@@ -28,7 +28,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "454,playerList is null,error,playerList为空")
 	container = append(container, "455, playerList.(map[string]map[string]interface{}) error ,error,playerList格式错误")
 	container = append(container, "456,some player id is null,error,某个玩家ID为空")
-
+	container = append(container, "457, player id is null or group id is null,error,某个玩家ID为空")
 
 
 	//container = append(container, "555, ,error,公众错误类中，有一个找不到错误码的情况")
@@ -56,10 +56,12 @@ func getErrorCode() (container []string) {
 	container = append(container, "620, etcd rule matchCode is empty ,error, ")
 	container = append(container, "621, etcd rule value is empty,error, ")
 	container = append(container, "622, etcd rule json.Unmarshal err {0},error, ")
-	//container = append(container, "623, etcd rule matchCode is empty,error, ")
-	//container = append(container, "624, etcd rule matchCode is empty,error, ")
-	//container = append(container, "625, etcd rule matchCode is empty,error, ")
+	container = append(container, "623, playerStatus not equal Sign {0},error, ")
 
+	//push相关
+	container = append(container, "700, push respone code err {0},error, ")
+	//group相关
+	container = append(container, "750, groupId not in db {0},error, ")
 
 	//http 相关
 	container = append(container, "800,http content = 0 ,post data is empty ,error,该接口需要POST数据，但数据为空")

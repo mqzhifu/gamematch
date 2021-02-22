@@ -1,14 +1,15 @@
 package gamematch
 
 import (
+	"encoding/json"
 	"github.com/gomodule/redigo/redis"
-	"src/zlib"
 	"strconv"
 	"strings"
 	"sync"
+	"zlib"
 )
 
-//匹配成功后，会推送给3方，
+//推送给3方，支持重试
 type PushElement struct {
 	Id  		int
 	ATime 		int
@@ -25,6 +26,7 @@ type Push struct {
 	Rule 		Rule
 	//queueSign 	*QueueSign
 	QueueSuccess	*QueueSuccess
+	Log 		*zlib.Log
 }
 
 func NewPush(rule Rule)*Push{
@@ -34,7 +36,8 @@ func NewPush(rule Rule)*Push{
 
 	//push.queueSign = NewQueueSign(rule)
 	//这里有个问题，循环 new
-	push.QueueSuccess = NewQueueSuccess(rule,nil)
+	push.QueueSuccess = NewQueueSuccess(rule,push)
+	push.Log = getRuleModuleLogInc(rule.CategoryKey,"push")
 	return push
 }
 
@@ -48,7 +51,9 @@ func (push *Push)  getRedisPrefixKey( )string{
 func (push *Push)  getRedisCatePrefixKey(  )string{
 	return push.getRedisPrefixKey() + redisSeparation + push.Rule.CategoryKey
 }
-
+func (push *Push)  getRedisPushIncKey()string{
+	return push.getRedisCatePrefixKey()  + redisSeparation + "inc_id"
+}
 func (push *Push) GetPushIncId( )  int{
 	key := push.getRedisPushIncKey()
 	res,_ := redis.Int(myredis.RedisDo("INCR",key))
@@ -56,19 +61,17 @@ func (push *Push) GetPushIncId( )  int{
 }
 
 func (push *Push) getRedisKeyPushStatus()string{
-	return push.getRedisCatePrefixKey() + redisSeparation + "push_status"
+	return push.getRedisCatePrefixKey() + redisSeparation + "status"
 }
 
-func (push *Push) getRedisKeyPushPrefix()string{
-	return push.getRedisCatePrefixKey() + redisSeparation + "push"
-}
+//func (push *Push) getRedisKeyPushPrefix()string{
+//	return push.getRedisCatePrefixKey() + redisSeparation + "push"
+//}
 
 func (push *Push) getRedisKeyPush( id int)string{
-	return push.getRedisKeyPushPrefix() + redisSeparation + "push" + redisSeparation + strconv.Itoa(id)
+	return push.getRedisCatePrefixKey()   + redisSeparation + strconv.Itoa(id)
 }
-func (push *Push)  getRedisPushIncKey()string{
-	return push.getRedisCatePrefixKey()  + redisSeparation + "inc_id"
-}
+
 
 func (push *Push) getById (id int) (element PushElement) {
 	key := push.getRedisKeyPush(id)
@@ -82,6 +85,7 @@ func (push *Push) getById (id int) (element PushElement) {
 }
 
 func  (push *Push) addOnePush (linkId int,category int ,payload string) int {
+	mylog.Debug("addOnePush" , linkId,category,payload)
 	id :=  push.GetPushIncId()
 	key := push.getRedisKeyPush(id)
 	pushElement := PushElement{
@@ -100,7 +104,7 @@ func  (push *Push) addOnePush (linkId int,category int ,payload string) int {
 
 	pushKey := push.getRedisKeyPushStatus()
 	res,err = myredis.RedisDo("zadd",redis.Args{}.Add(pushKey).Add(PushStatusWait).Add(id)...)
-	mylog.Info("add push status : ",res,err)
+	mylog.Info("addOnePush status : ",res,err)
 
 	return id
 }
@@ -146,7 +150,7 @@ func (push *Push)   delOneRule(){
 }
 
 func  (push *Push)  delAllPush( ){
-	prefix := push.getRedisKeyPushPrefix()
+	prefix := push.getRedisCatePrefixKey()
 	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
 	if len(res) == 0{
 		mylog.Notice(" GroupElement by keys(*) : is empty")
@@ -167,94 +171,11 @@ func  (push *Push)  delAllStatus( ){
 
 func  (push *Push)  delOneStatus( pushId int){
 	key := push.getRedisKeyPushStatus()
-	res,_ :=  myredis.RedisDo("ZREM",redis.Args{}.Add(key).Add(pushId) )
-	zlib.MyPrint(" delOneRuleOneResult res",res)
+	res,err :=  myredis.RedisDo("ZREM",redis.Args{}.Add(key).Add(pushId)... )
+	mylog.Debug(" delOne PushStatus index res",res,err)
+	push.Log.Info(" delOne PushStatus index res",res,err)
 }
 
-func  (push *Push)  delOnePush( id int){
-	key := push.getRedisKeyPush(id)
-	res,_ := redis.Strings( myredis.RedisDo("del",key ))
-	zlib.MyPrint(" delOnePush res",res)
-
-	push.delOneStatus(id)
-}
-func  (push *Push) hook(id int,status int){
-	mylog.Info(" action hook")
-
-	element := push.getById(id)
-	//fmt.Printf("%+v", element)
-	//zlib.ExitPrint(111)
-	if status == PushStatusWait{
-		push.pushAndUpInfo(element,PushStatusRetry)
-	}else{
-		if element.Times >= len(PushRetryPeriod) {
-			mylog.Notice(" push retry time > maxRetryTime")
-			push.delOnePush(id)
-		}else{
-			time := PushRetryPeriod[element.Times]
-
-			d := zlib.GetNowTimeSecondToInt() - element.UTime
-			mylog.Info("this time : ",time,"now :",zlib.GetNowTimeSecondToInt() , " - element.UTime ",element.UTime , " = ",d)
-			if d >= time{
-				push.pushAndUpInfo(element,PushStatusRetry)
-			}
-		}
-	}
-}
-func  (push *Push)pushAndUpInfo(element PushElement,upStatus int){
-	mylog.Debug("pushAndUpInfo",element,upStatus)
-
-	//zlib.ExitPrint(element.Category , PushCategorySignTimeout)
-	var httpRs zlib.ResponseMsgST
-	var err error
-	//if element.Category == PushCategorySignTimeout{//测试使用
-	//	return
-	//}
-	if element.Category == PushCategorySignTimeout ||  element.Category == PushCategorySuccessTimeout {
-		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
-		myGroup := GroupStrToStruct(payload)
-		httpRs,err = myservice.HttpPost("gameroom","v1/match/error",myGroup)
-	}else if element.Category == PushCategorySuccess{
-		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
-		thisResult := push.QueueSuccess.strToStruct (payload)
-		postData:= push.QueueSuccess.GetResultById(thisResult.Id,1,0)
-		//fmt.Printf("postData : %+v",postData)
-		//zlib.ExitPrint(payload)
-
-		httpRs ,err = myservice.HttpPost("gameroom","v1/match/succ",postData)
-	}else{
-		mylog.Error("element.Category error.")
-		return
-	}
-
-	if err != nil{
-		push.upRetryPushInfo(element)
-
-		msg := myerr.MakeOneStringReplace(err.Error())
-		myerr.NewErrorCodeReplace(911,msg)
-		return
-	}
-
-	if(httpRs.Code == 0){
-		push.delOnePush(element.Id)
-		return
-	}
-
-	if element.Category == PushCategorySignTimeout ||  element.Category == PushCategorySuccessTimeout {
-		if httpRs.Code == 116 || httpRs.Code ==  119{
-			//ErrGroupStatus   119 队伍当前不可操作（不要重试）
-			//ErrServerError 102 服务器内部错误
-			//ErrMarshalError 101 json解析错误
-			//ErrGroupLock 117 组队数据读写中
-			//ErrGroupExpire 116 组队过期或者不存在 （不要重试）
-			push.delOnePush(element.Id)
-			return
-		}
-	}else{
-
-	}
-
-}
 //失败且需要重试的PUSH-ELEMENT
 func  (push *Push)  upRetryPushInfo(element PushElement ){
 	element.Status = PushStatusRetry
@@ -264,13 +185,16 @@ func  (push *Push)  upRetryPushInfo(element PushElement ){
 	pushStr := push.pushStructToStr(element)
 	res,err := myredis.RedisDo("set",redis.Args{}.Add(key).Add(pushStr)...)
 
+	push.Log.Info("upRetryPushElementInfo , ", element)
+	//这里有个麻烦点，元素信息 和 索引信息，是分开放的，元素的变更比较简单，索引是一个集合，改起来有点麻烦
+	//那就直接先删了，再重新添加一条
 	statuskey := push.getRedisKeyPushStatus()
-
+	push.Log.Info("del pushStatus index ,pushId : ",element.Id)
 	push.delOneStatus(element.Id)
 	res,err = myredis.RedisDo("zadd",redis.Args{}.Add(statuskey).Add(PushStatusRetry).Add(element.Id)...)
-	mylog.Info("add push status : ",res,err)
 
-
+	push.Log.Info("add  new pushStatus index : ",res,err)
+	mylog.Info("add  new pushStatus index : ",res,err)
 }
 func  (push *Push)  checkStatus(){
 	mylog.Info("start one rule checkStatus : ")
@@ -283,28 +207,170 @@ func  (push *Push)  checkStatus(){
 			inc = 0
 		}
 		inc++
+		push.Log.Info("loop inc ",inc)
 
 		push.checkOneByStatus(key,PushStatusWait)
 		push.checkOneByStatus(key,PushStatusRetry)
 
-		mySleepSecond(1)
+		mySleepSecond(1, "  push checkStatus")
 	}
 
 }
 
 func  (push *Push)  checkOneByStatus(key string,status int){
 	mylog.Info("checkOneByStatus :",status)
+	push.Log.Info("checkOneByStatus :",status)
 	res,err := redis.Ints(  myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
-	mylog.Info("sign timeout group element total : ",len(res))
+	push.Log.Info("need process element total : ",len(res))
 	if err != nil{
 		mylog.Error("redis keys err :",err.Error())
+		push.Log.Error("redis keys err :",err.Error())
 		return
 	}
 
 	if len(res) == 0{
 		mylog.Notice(" empty , no need process")
+		push.Log.Notice(" empty , no need process")
 	}
 	for _,id := range res{
 		push.hook(id,status)
 	}
+}
+
+func  (push *Push) hook(id int,status int){
+	//mylog.Info(" action hook , push id : " ,id ," status : ",status)
+	push.Log.Info(" action hook , push id : " ,id ," status : ",status)
+	element := push.getById(id)
+	//fmt.Printf("%+v", element)
+	if status == PushStatusWait{
+		push.Log.Info("element first push")
+		push.pushAndUpInfo(element,PushStatusRetry)
+	}else{
+		push.Log.Info("element retry")
+		if element.Times >= len(PushRetryPeriod) {
+			mylog.Notice(" push retry time > maxRetryTime")
+			push.delOnePush(id)
+		}else{
+			time := PushRetryPeriod[element.Times]
+			push.Log.Info("retry rule : ",PushRetryPeriod," this time : ",time )
+			d := zlib.GetNowTimeSecondToInt() - element.UTime
+			//mylog.Info("this time : ",time,"now :",zlib.GetNowTimeSecondToInt() , " - element.UTime ",element.UTime , " = ",d)
+			push.Log.Info("this time : ",time,"now :",zlib.GetNowTimeSecondToInt() , " - element.UTime ",element.UTime , " = ",d)
+			if d >= time{
+				push.pushAndUpInfo(element,PushStatusRetry)
+			}else{
+				push.Log.Notice("The time is too short to trigger the Push!!! ")
+			}
+		}
+	}
+}
+func getAnyType()(a interface{}){
+	return a
+}
+func  (push *Push)pushAndUpInfo(element PushElement,upStatus int){
+	mylog.Debug("pushAndUpInfo",element,upStatus)
+	push.Log.Info("pushAndUpInfo",element," upStatus: ",upStatus)
+	//zlib.ExitPrint(element.Category)
+	var httpRs zlib.ResponseMsgST
+	var err error
+	//if element.Category == PushCategorySignTimeout{//测试使用
+	//	return
+	//}
+
+	thirdMethodUri := ""
+	postData := getAnyType()
+	//thirdMethodPostData := interface{}
+	if element.Category == PushCategorySignTimeout  {
+		push.Log.Debug("element.Category == PushCategorySignTimeout")
+		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		postData = GroupStrToStruct(payload)
+
+		thirdMethodUri = "v1/match/error"
+		//httpRs,err = myservice.HttpPost(SERVICE_MSG_SERVER,"v1/match/error",myGroup)
+	}else if element.Category == PushCategorySuccessTimeout {
+		push.Log.Debug("element.Category == PushCategorySuccessTimeout")
+		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		//zlib.MyPrint(payload)
+		postData = push.QueueSuccess.strToStruct(payload)
+		thirdMethodUri = "v1/match/error"
+		//httpRs,err = myservice.HttpPost(SERVICE_MSG_SERVER,"v1/match/error",myResult)
+	}else if element.Category == PushCategorySuccess{
+		push.Log.Debug("element.Category == PushCategorySuccess")
+		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		thisResult := push.QueueSuccess.strToStruct (payload)
+		postData = push.QueueSuccess.GetResultById(thisResult.Id,1,0)
+		//fmt.Printf("postData : %+v",postData)
+		//zlib.ExitPrint(payload)
+		thirdMethodUri = "v1/match/succ"
+		//httpRs ,err = myservice.HttpPost(SERVICE_MSG_SERVER,"v1/match/succ",postData)
+	}else{
+		mylog.Error("element.Category error.")
+		push.Log.Error("element.Category error.")
+		return
+	}
+	push.Log.Debug("push third service ,  uri : ",thirdMethodUri, " , postData : ",postData)
+	httpRs,err = myservice.HttpPost(SERVICE_MSG_SERVER,thirdMethodUri,postData)
+	push.Log.Debug("push third service , httpRs : ",httpRs , " err : ",err)
+
+	if err != nil{
+		push.upRetryPushInfo(element)
+
+		msg := myerr.MakeOneStringReplace(err.Error())
+		myerr.NewErrorCodeReplace(911,msg)
+		push.Log.Error("push third service ",err.Error())
+		return
+	}
+
+	if(httpRs.Code == 0){// 0 即是200 ，推送成功~
+		push.delOnePush(element.Id)
+		if element.Category == PushCategorySuccess || element.Category == PushCategorySuccessTimeout{
+			push.Log.Info("delOneResult")
+			push.QueueSuccess.delOneResult(element.LinkId,1,1,1,1)
+		}
+		return
+	}
+
+	if element.Category == PushCategorySignTimeout   {
+		if httpRs.Code == 116 || httpRs.Code ==  119{
+			push.delOnePush(element.Id)
+		}else{
+			push.upRetryPushInfo(element)
+
+			httpRsJsonStr,_ := json.Marshal(httpRs)
+			msg := myerr.MakeOneStringReplace(string(httpRsJsonStr))
+			myerr.NewErrorCodeReplace(700,msg)
+			return
+		}
+	}else if  element.Category == PushCategorySuccessTimeout{
+		push.delOnePush(element.Id)
+		push.Log.Info("delOneResult")
+		push.QueueSuccess.delOneResult(element.LinkId,1,1,1,1)
+	}else if element.Category == PushCategorySuccess{
+		if httpRs.Code == 108 || httpRs.Code == 102{
+			push.upRetryPushInfo(element)
+
+			httpRsJsonStr,_ := json.Marshal(httpRs)
+			msg := myerr.MakeOneStringReplace(string(httpRsJsonStr))
+			myerr.NewErrorCodeReplace(700,msg)
+			return
+		}else{
+			push.delOnePush(element.Id)
+			push.Log.Info("delOneResult")
+			push.QueueSuccess.delOneResult(element.LinkId,1,1,1,1)
+			return
+		}
+	}else{
+		mylog.Error("pushAndUpInfo element.Category not fuond!!!")
+		push.Log.Error("pushAndUpInfo element.Category not fuond!!!")
+	}
+}
+
+func  (push *Push)  delOnePush( id int){
+	//mylog.Info("delOnePush",id)
+	key := push.getRedisKeyPush(id)
+	res,err :=   myredis.RedisDo("del",redis.Args{}.Add(key)... )
+	mylog.Debug(" delOnePush (",id,")",res,err)
+	push.Log.Info(" delOnePush (",id,")",res,err)
+
+	push.delOneStatus(id)
 }

@@ -1,17 +1,16 @@
 package gamematch
 
-import (
-	"src/zlib"
-)
-var AddRuleFlag = 0
+import "zlib"
 
+var AddRuleFlag = 0
 
 func Test(){
 	//实例化-<日志>-组件
 	logOption := zlib.LogOption{
-		OutFilePath : "/data/www/golang/src/logs",
-		Level : zlib.LEVEL_ALL,
-		Target : 15,
+		OutFilePath : LOG_BASE_DIR,
+		OutFileName: LOG_FILE_NAME,
+		Level : LOG_LEVEL,
+		Target : LOG_TARGET,
 	}
 	mylog,errs  := zlib.NewLog(logOption)
 	if errs != nil{
@@ -23,7 +22,7 @@ func Test(){
 		Port: "6379",
 		Log: mylog,
 	}
-	myredis , errs := zlib.NewRedisConn(redisOption)
+	myredis , errs := zlib.NewRedisConnPool(redisOption)
 	if errs != nil{
 		zlib.ExitPrint("new redis err",errs.Error())
 	}
@@ -44,28 +43,25 @@ func Test(){
 		Prefix: SERVICE_PREFIX,
 	}
 
-	myHost := "0.0.0.1"
+	myHost := "192.168.31.148"
 	myPort := "5678"
-
 
 	myservice := zlib.NewService(serviceOption)
 	//将自己注册成一个服务
 	myservice.RegOne(SERVICE_MATCH_NAME,myHost+":"+myPort)
 	//最后，终于，实例化：匹配机制
 	myGamematch,_ := NewGamematch(mylog,myredis,myservice,myetcd)
-	//myGamematch.DemonAll()
-
 	myHttpdOption :=  HttpdOption{
 		Host: myHost,
 		Port: myPort,
 		Log : mylog,
 	}
 	go myGamematch.startHttpd(myHttpdOption)
-
-	deadLoopBlock(1)
+	go myGamematch.DemonAll()
+	deadLoopBlock(1 , " main ")
 
 	//TestAddRuleData(*myGamematch)
-	//TestSign(*myGamematch)
+	//TestSign(myGamematch,999)
 	//TestMatching(*myGamematch)
 	//TestUnitCase(*myGamematch)
 	//zlib.ExitPrint(-999)
@@ -128,23 +124,23 @@ func TestUnitCase(myGamematch Gamematch){
 	myGamematch.DemonAll()
 }
 
-func delOneRule(myGamematch Gamematch ,ruleId int){
-	queueSign := myGamematch.getContainerSignByRuleId(ruleId)
-	queueSign.delOneRule()
-
-	queueSuccess := myGamematch.getContainerSuccessByRuleId(ruleId)
-	queueSuccess.delOneRule()
-
-	playerStatus.delAllPlayers()
-	mylog.Notice("testSignDel finish.")
-}
+//func delOneRule(myGamematch Gamematch ,ruleId int){
+//	queueSign := myGamematch.getContainerSignByRuleId(ruleId)
+//	queueSign.delOneRule()
+//
+//	queueSuccess := myGamematch.getContainerSuccessByRuleId(ruleId)
+//	queueSuccess.delOneRule()
+//
+//	playerStatus.delAllPlayers()
+//	mylog.Notice("testSignDel finish.")
+//}
 
 func getOneRandomPlayerUid()int{
 	return zlib.GetRandIntNumRange(1000,9999)
 }
 
 
-func TestSign(myGamematch Gamematch,ruleId int){
+func TestSign(myGamematch *Gamematch,ruleId int){
 	//ruleId := 2
 	//playerIdInc := 1
 	signRuleArr := []int{1,5,4,5,3,3,3,2,2,1,1,1,1,5,4,4}

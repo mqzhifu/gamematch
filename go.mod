@@ -2,6 +2,7 @@ module gamematch
 
 go 1.14
 require (
-	github.com/coreos/etcd v3.3.25+incompatible
-
+	zlib v0.0.0
 )
+
+replace "zlib" => "./../zlib"

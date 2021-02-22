@@ -2,11 +2,10 @@ package gamematch
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/gomodule/redigo/redis"
-	"src/zlib"
 	"strconv"
 	"strings"
+	"zlib"
 )
 
 //匹配规则 - 配置 ,像： 附加属性
@@ -34,6 +33,7 @@ type PlayerWeight struct {
 }
 
 type GamesMatchConfig struct {
+	Id 		int		`json:"id"`
 	GamesId    int    `json:"games_id"`    //游戏ID
 	Name       string `json:"name"`        //规则名称
 	Status     int    `json:"status"`      //规则状态：1上线 2下线 3删除
@@ -43,6 +43,7 @@ type GamesMatchConfig struct {
 	Rule       string `json:"rule"`        //表达式匹配规则
 	Timeout    int    `json:"timeout"`     //匹配超时时间
 	Fps        int    `json:"fps"`         //帧率
+	SuccessTimeout int `json:"success_timeout"`
 }
 
 type RuleConfig struct {
@@ -68,6 +69,12 @@ func   NewRuleConfig ()(*RuleConfig,error){
 	}
 
 	mylog.Info("rule cnt : ",len(ruleList))
+	for _,v := range ruleList{
+		mylog.Info("match code : ",v.CategoryKey)
+	}
+
+	rule.Data = ruleList
+
 	return rule,nil
 }
 
@@ -77,7 +84,7 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 	if len(etcdRuleList) == 0{
 		return ruleList
 	}
-	i := 1
+	//i := 1
 	for k,v := range etcdRuleList{
 		matchCode := strings.Replace(k,RuleEtcdConfigPrefix,"",-1)
 		matchCode = strings.Trim(matchCode," ")
@@ -90,6 +97,7 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 			myerr.NewErrorCode(621)
 			continue
 		}
+		//zlib.MyPrint(v)
 		gamesMatchConfig := GamesMatchConfig{}
 		err := json.Unmarshal( []byte(v), & gamesMatchConfig)
 		if err != nil{
@@ -97,14 +105,14 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 			myerr.NewErrorCodeReplace(622,msg)
 			continue
 		}
-
+		//fmt.Printf("%+v",gamesMatchConfig)
 		playerWeightRow := PlayerWeight{}
 		ruleRow := Rule{
-			Id: i,
-			AppId: i,
+			Id: gamesMatchConfig.Id,
+			AppId: gamesMatchConfig.Id,
 			CategoryKey : matchCode,
 			MatchTimeout: gamesMatchConfig.Timeout,
-			SuccessTimeout: gamesMatchConfig.Timeout,
+			SuccessTimeout: gamesMatchConfig.SuccessTimeout,
 			IsSupportGroup: 1,
 
 			Flag:gamesMatchConfig.TeamType,
@@ -113,7 +121,7 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 			GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
 			PlayerWeight: playerWeightRow,
 		}
-		fmt.Printf("%+v",gamesMatchConfig)
+		//fmt.Printf("%+v",gamesMatchConfig)
 		//zlib.ExitPrint(gamesMatchConfig)
 		_,err =  ruleConfig.CheckRuleByElement(ruleRow)
 		//zlib.ExitPrint(err)
@@ -121,8 +129,8 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 			//myerr.NewErrorCode(621)
 			continue
 		}
-		ruleList[i] = ruleRow
-		i++
+		ruleList[ruleRow.Id] = ruleRow
+		//i++
 	}
 	//zlib.ExitPrint(ruleList)
 	return ruleList

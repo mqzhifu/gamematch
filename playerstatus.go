@@ -3,7 +3,7 @@ package gamematch
 import (
 	"github.com/gomodule/redigo/redis"
 	"reflect"
-	"src/zlib"
+	"zlib"
 	"strconv"
 )
 
@@ -49,6 +49,7 @@ func (playerStatus *PlayerStatus) GetOne(player Player)PlayerStatusElement{
 	}
 
 	if res == nil || len(res) == 0{//证明，该KEY不存在
+		mylog.Notice("PlayerStatusGetOne is empty!!!")
 		playerStatusElement := PlayerStatusElement{
 			PlayerId: player.Id,
 			Status: PlayerStatusNotExist,

@@ -2,7 +2,7 @@ package gamematch
 
 import (
 	"github.com/gomodule/redigo/redis"
-	"src/zlib"
+	"zlib"
 	"strconv"
 	"strings"
 )
