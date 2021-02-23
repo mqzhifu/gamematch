@@ -66,6 +66,7 @@ func getErrorCode() (container []string) {
 	//http 相关
 	container = append(container, "800,http content = 0 ,post data is empty ,error,该接口需要POST数据，但数据为空")
 	container = append(container, "801,http no route this uri ,error,请求URI无法路由到具体方法")
+	container = append(container, "802,post data is empty,error,数据为空")
 
 	//系统级别错误
 	container = append(container, "900,get ErrorCode container is null ,error,获取错误码配置表为空")

@@ -465,6 +465,7 @@ func  (queueSign *QueueSign) CheckTimeout( push *Push){
 		if len(res) == 0{
 			mylog.Notice(" empty , no need process")
 			queueSign.Log.Info(" empty , no need process")
+			//myGosched("sign CheckTimeout")
 			mySleepSecond(1, " sign CheckTimeout ")
 			continue
 		}
@@ -480,6 +481,7 @@ func  (queueSign *QueueSign) CheckTimeout( push *Push){
 
 			//zlib.ExitPrint(-199)
 		}
+		//myGosched("sign CheckTimeout")
 		mySleepSecond(1," sign CheckTimeout ")
 	}
 }

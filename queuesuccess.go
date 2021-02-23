@@ -321,6 +321,7 @@ func  (queueSuccess *QueueSuccess) CheckTimeout(push *Push){
 		if len(res) == 0{
 			mylog.Notice(" empty , no need process")
 			queueSuccess.Log.Info(" empty , no need process")
+			//myGosched("success CheckTimeout")
 			mySleepSecond(1," success CheckTimeout ")
 			continue
 		}
@@ -337,6 +338,7 @@ func  (queueSuccess *QueueSuccess) CheckTimeout(push *Push){
 
 			//zlib.ExitPrint(111111111)
 		}
+		//myGosched("success CheckTimeout")
 		mySleepSecond(1," success CheckTimeout ")
 	}
 }

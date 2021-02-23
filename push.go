@@ -212,6 +212,7 @@ func  (push *Push)  checkStatus(){
 		push.checkOneByStatus(key,PushStatusWait)
 		push.checkOneByStatus(key,PushStatusRetry)
 
+		//myGosched("push checkStatus")
 		mySleepSecond(1, "  push checkStatus")
 	}
 
@@ -221,7 +222,7 @@ func  (push *Push)  checkOneByStatus(key string,status int){
 	mylog.Info("checkOneByStatus :",status)
 	push.Log.Info("checkOneByStatus :",status)
 	res,err := redis.Ints(  myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(key).Add(status).Add(status)...))
-	push.Log.Info("need process element total : ",len(res))
+	push.Log.Info("push need process element total : ",len(res))
 	if err != nil{
 		mylog.Error("redis keys err :",err.Error())
 		push.Log.Error("redis keys err :",err.Error())

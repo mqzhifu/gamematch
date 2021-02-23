@@ -26,7 +26,7 @@ func NewMatch(rule Rule,queueSign *QueueSign,queueSuccess *QueueSuccess,push *Pu
 	match.rangeStart = ""
 	match.rangeEnd = ""
 
-	match.Log = getModuleLogInc("matching")
+	match.Log = getRuleModuleLogInc(rule.CategoryKey,"matching")
 	return match
 }
 //一条rule 的匹配

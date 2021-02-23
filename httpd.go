@@ -9,6 +9,7 @@ import (
 	"zlib"
 )
 
+//content_type 类型 枚举
 const (
 	CT_EMPTY 		= ""
 	CT_JSON 		= "application/json"
@@ -66,6 +67,68 @@ func (httpd *Httpd)Start()error{
 	}
 	return nil
 }
+//主要，是接收HTTP 回调
+func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
+	parameter := r.URL.Query()//GET 方式URL 中的参数 转 结构体
+	uri := r.URL.RequestURI()
+
+	contentType := httpd.GetContentType(r)
+	//zlib.MyPrint("r.form",r.Form)
+	httpd.Option.Log.Info("receiver :  uri :",uri," , url.query : ",parameter, " method : ",r.Method , " content_type : ",contentType)
+	httpd.Log.Info("receiver :  uri :",uri," , url.query : ",parameter, " method : ",r.Method , " content_type : ",contentType)
+	httpd.Log.Debug(r.Header)
+	var postDataMap map[string]interface{}
+	var postJsonStr string
+	if strings.ToUpper(r.Method)  == "POST"{
+		GetPostDataMap ,myJsonStr,errs := httpd.GetPostData(r,contentType.Name)
+		//httpd.Option.Log.Debug("postDataMap : ",postDataMap)
+		if errs != nil{
+			httpd.ResponseStatusCode(w,500,"httpd.GetPostDat" + errs.Error() )
+			return
+		}
+		httpd.Option.Log.Info(GetPostDataMap,errs)
+		httpd.Log.Info(GetPostDataMap,errs)
+		postDataMap = GetPostDataMap
+		postJsonStr = myJsonStr
+	}else{
+		//this is get method
+	}
+	//time.Now().Format("2006-01-02 15:04:05")
+	if r.URL.RequestURI() == "/favicon.ico" {//浏览器的ICON
+		httpd.ResponseStatusCode(w,403,"no power")
+		return
+	}
+	if uri == "" || uri == "/" {
+		httpd.ResponseStatusCode(w,500,"RequestURI is null or uir is :  '/'")
+		return
+	}
+	//去掉 URI 中最后一个 /
+	uriLen := len(uri)
+	if string([]byte(uri)[uriLen-1:uriLen]) == "/"{
+		uri = string([]byte(uri)[0:uriLen - 1])
+	}
+	httpd.Log.Info("final uri : ",uri , " start routing ...")
+	//*********: 还没有加  v1  v2 版本号
+	code := 200
+	var msg interface{}
+	if uri == "/sign" {
+		code,msg = httpd.signHandler(postJsonStr)
+	}else if uri == "/sign/cancel"{
+		code,msg = httpd.signCancelHandler(postJsonStr)
+	}else if uri == "/rule/add" {
+		//code,msg = httpd.ruleAddOne(postDataMap)
+	}else if uri == "/getErrorInfo" {
+		code,msg = httpd.getErrorInfoHandler()
+	}else if uri == "/clearRuleByCode"{
+		code,msg = httpd.clearRuleByCodeHandler(postDataMap)
+	}else{
+		code = 500
+		msg = " uri router failed."
+	}
+
+	httpd.ResponseMsg(w,code,msg)
+
+}
 //响应的具体内容
 func  (httpd *Httpd)ResponseMsg(w http.ResponseWriter,code int ,msg interface{} ){
 	//fmt.Println("SetResponseMsg in",code,msg)
@@ -98,66 +161,7 @@ func (httpd *Httpd)ResponseStatusCode(w http.ResponseWriter,code int ,responseIn
 	w.WriteHeader(403)
 	w.Write([]byte(responseInfo))
 }
-//主要，是接收HTTP 回调
-func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
-	parameter := r.URL.Query()//GET 方式URL 中的参数 转 结构体
-	uri := r.URL.RequestURI()
 
-	contentType := httpd.GetContentType(r)
-	//zlib.MyPrint("r.form",r.Form)
-	httpd.Option.Log.Info("receiver :  uri :",uri," , url.query : ",parameter, " method : ",r.Method , " content_type : ",contentType)
-	httpd.Log.Info("receiver :  uri :",uri," , url.query : ",parameter, " method : ",r.Method , " content_type : ",contentType)
-	httpd.Log.Debug(r.Header)
-	var postDataMap map[string]interface{}
-	if strings.ToUpper(r.Method)  == "POST"{
-		GetPostDataMap ,errs := httpd.GetPostData(r,contentType.Name)
-		//httpd.Option.Log.Debug("postDataMap : ",postDataMap)
-		if errs != nil{
-			httpd.ResponseStatusCode(w,500,"httpd.GetPostDat" + errs.Error() )
-			return
-		}
-		httpd.Option.Log.Info(GetPostDataMap,errs)
-		httpd.Log.Info(GetPostDataMap,errs)
-		postDataMap = GetPostDataMap
-	}else{
-		//this is get method
-	}
-	//time.Now().Format("2006-01-02 15:04:05")
-	if r.URL.RequestURI() == "/favicon.ico" {//浏览器的ICON
-		httpd.ResponseStatusCode(w,403,"no power")
-		return
-	}
-	if uri == "" || uri == "/" {
-		httpd.ResponseStatusCode(w,500,"RequestURI is null or uir is :  '/'")
-		return
-	}
-	//去掉 URI 中最后一个 /
-	uriLen := len(uri)
-	if string([]byte(uri)[uriLen-1:uriLen]) == "/"{
-		uri = string([]byte(uri)[0:uriLen - 1])
-	}
-	httpd.Log.Info("final uri : ",uri , " start routing ...")
-	//*********: 还没有加  v1  v2 版本号
-	code := 200
-	var msg interface{}
-	if uri == "/sign" {
-		code,msg = httpd.signHandler(postDataMap)
-	}else if r.URL.RequestURI() == "/sign/cancel"{
-		code,msg = httpd.signCancelHandler(postDataMap)
-	}else if r.URL.RequestURI() == "/rule/add" {
-		//code,msg = httpd.ruleAddOne(postDataMap)
-	}else if r.URL.RequestURI() == "/getErrorInfo" {
-		code,msg = httpd.getErrorInfoHandler()
-	}else if r.URL.RequestURI() == "/clearRuleByCode"{
-		code,msg = httpd.clearRuleByCodeHandler(postDataMap)
-	}else{
-		code = 500
-		msg = " uri router failed."
-	}
-
-	httpd.ResponseMsg(w,code,msg)
-
-}
 
 func (httpd *Httpd) GetContentType( r *http.Request)ContentType{
 	//r.Header.Get("Content-Type")
@@ -197,10 +201,10 @@ func GetContentTypeList()[]string{
 	return list
 }
 
-func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[string]interface{}, err error){
+func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[string]interface{},jsonStr string, err error){
 	httpd.Option.Log.Debug(" getPostData ")
 	if r.ContentLength == 0{//获取主体数据的长度
-		return data,nil
+		return data,jsonStr,nil
 	}
 	switch contentType {
 		case CT_JSON:
@@ -211,19 +215,18 @@ func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[st
 			jsonDataMap := make(map[string]interface{})
 			errs := json.Unmarshal(body,&jsonDataMap)
 			mylog.Debug("test ",jsonDataMap,errs)
-			return jsonDataMap,nil
+			return jsonDataMap,string(body),nil
 		case CT_MULTIPART:
 			data = make( map[string]interface{})
 			r.ParseMultipartForm(r.ContentLength)
 			for k,v:= range r.Form{
 				data[k] = v
 			}
-			return data,nil
-		//case "x-www-form-urlencoded":
+			return data,jsonStr,nil
 		case CT_URLENCODED:
 			err := r.ParseForm()
 			if err != nil{
-				return data,err
+				return data,jsonStr,err
 			}
 			data = make( map[string]interface{})
 			for k,v:= range r.Form{
@@ -232,148 +235,11 @@ func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[st
 				}else{
 					zlib.ExitPrint(" bug !!!")
 				}
-
 			}
-			return data,nil
+			return data,jsonStr,nil
 		default:
 			httpd.Option.Log.Error("contentType no support : ",contentType , " ,no data")
 	}
 
-	return data,nil
+	return data,jsonStr,nil
 }
-
-
-//func  (httpd *Httpd)ruleAddOne(  postDataMap map[string]interface{})(code int ,msg interface{}){
-//	data,errs := httpd.Gamematch.CheckHttpAddRule(jsonDataMap)
-//	//zlib.MyPrint(errs)
-//	if errs != nil{
-//		errInfo := zlib.ErrInfo{}
-//		json.Unmarshal([]byte(errs.Error()),&errInfo)
-//
-//		return errInfo.Code,errInfo.Msg
-//	}
-//
-//	httpd.Gamematch.RuleConfig.AddOne()
-//
-//	return code,msg
-//}
-
-func  (httpd *Httpd)getConstList(){
-	httpd.Log.Info(" routing in signHandler : ")
-
-	fileDir := "/data/www/golang/src/gamematch/const.go"
-	doc := zlib.NewDocRegular(fileDir)
-	doc.ParseConst()
-}
-//获取错误码
-func  (httpd *Httpd)getErrorInfoHandler()(code int ,msg interface{}){
-	httpd.Log.Info(" routing in getErrorInfoHandler : ")
-
-	container := getErrorCode()
-	var res []MyErrorCode
-	for _,v:= range  container{
-		row := strings.Split(v,",")
-		myErrorCode := MyErrorCode{
-			Code: zlib.Atoi(row[0]),
-			Msg :row[1],
-			Flag: row[2],
-			MsgCn: row[3],
-		}
-		res = append(res,myErrorCode)
-	}
-
-	//msg,_ := json.Marshal(res)
-	//zlib.MyPrint(string(msg))
-	return 200,res
-}
-func  (httpd *Httpd)clearRuleByCodeHandler(postDataMap map[string]interface{})(code int ,msg interface{}){
-	httpd.Log.Info(" routing in clearRuleByCodeHandler : ")
-
-	matchCode,ok  :=postDataMap["matchCode"]
-	httpd.Option.Log.Info(matchCode,ok)
-	if !ok || matchCode == ""{
-		errs := myerr.NewErrorCode(450)
-		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
-
-		return errInfo.Code,errInfo.Msg
-	}
-
-	checkCodeRs := false
-	ruleId := 0
-	//zlib.ExitPrint(httpd.Gamematch.RuleConfig.getAll())
-	for _,rule := range httpd.Gamematch.RuleConfig.getAll(){
-		if  rule.CategoryKey == matchCode{
-			ruleId = rule.Id
-			checkCodeRs = true
-			break
-		}
-	}
-	if !checkCodeRs{
-		errs := myerr.NewErrorCode(451)
-		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
-
-		return errInfo.Code,errInfo.Msg
-	}
-
-	httpd.Gamematch.delOneRule(ruleId)
-	return code,msg
-}
-//报名 - 添加匹配玩家
-func  (httpd *Httpd)signHandler(postDataMap map[string]interface{})(code int ,msg interface{}){
-	httpd.Log.Info(" routing in signHandler : ")
-	data,errs := httpd.Gamematch.CheckHttpSignData(postDataMap)
-	if errs != nil{
-		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
-
-		return errInfo.Code,errInfo.Msg
-	}
-
-	signRsData, errs := httpd.Gamematch.Sign(data.RuleId,data.GroupId,data.CustomProp,data.PlayersList,data.Addition)
-	if errs != nil{
-		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
-
-		return errInfo.Code,errInfo.Msg
-	}
-	return 200,signRsData
-}
-//取消报名 - 删除已参与匹配的玩家信息
-func  (httpd *Httpd)signCancelHandler(postDataMap map[string]interface{})(code int ,msg interface{}){
-	httpd.Log.Info(" routing in signCancelHandler : ")
-	jsonDataMap := make(map[string]string)
-	//for k,v :=range postDataMap{
-		//jsonDataMap[k] = v.(string)
-
-	//}
-	jsonDataMap["groupId"] = zlib.Float64ToString(postDataMap["groupId"].(float64),0)
-	jsonDataMap["matchCode"] = postDataMap["matchCode"].(string)
-
-	data,errs := httpd.Gamematch.CheckHttpSignCancelData(jsonDataMap)
-	if errs != nil{
-		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
-		return errInfo.Code,  errInfo.Msg
-	}
-
-	signClass := httpd.Gamematch.getContainerSignByRuleId(data.RuleId)
-	//if data.GroupId > 0{
-		httpd.Log.Info("del by groupId")
-		err := signClass.cancelByGroupId(data.GroupId)
-		if err != nil{
-			errInfo := zlib.ErrInfo{}
-			json.Unmarshal([]byte(err.Error()),&errInfo)
-
-			return errInfo.Code,errInfo.Msg
-		}
-	//}else{
-	//	httpd.Log.Info("del by playerId")
-	//	signClass.cancelByPlayerId(data.PlayerId)
-	//}
-
-	return 200,"ok"
-}
-
-

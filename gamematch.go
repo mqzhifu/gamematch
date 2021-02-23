@@ -2,6 +2,7 @@ package gamematch
 
 import (
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 	"zlib"
@@ -23,21 +24,6 @@ type SignSuccessReturnData struct {
 	GroupId		int
 	PlayerIds 	string
 }
-
-type SignHttpData struct {
-	GroupId int
-	CustomProp	string
-	PlayersList []Player
-	RuleId int
-	Addition string
-}
-
-type SignCancelHttpData struct {
-	PlayerId	int
-	GroupId 	int
-	RuleId int
-}
-
 
 //玩家结构体，目前暂定就一个ID，其它的字段值，后期得加，主要是用于权重计算
 type Player struct {
@@ -119,12 +105,15 @@ func (gamematch *Gamematch)getContainerPushByRuleId(ruleId int)*Push{
 }
 //报名 - 加入匹配队列
 //此方法，得有前置条件：验证所有参数是否正确，因为使用者为http请求，数据的验证交由HTTP层做处理，如果是非HTTP，要验证一下
-func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, players []Player ,addition string )( signSuccessReturnData SignSuccessReturnData , err error){
+//func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, players []Player ,addition string )( signSuccessReturnData SignSuccessReturnData , err error){
+func (gamematch *Gamematch) Sign(httpReqSign HttpReqSign )( signSuccessReturnData SignSuccessReturnData , err error){
+	ruleId := httpReqSign.RuleId
+	outGroupId :=  httpReqSign.GroupId
 	rule,ok := gamematch.RuleConfig.GetById(ruleId)
 	if !ok{
 		return signSuccessReturnData,myerr.NewErrorCode(400)
 	}
-	lenPlayers := len(players)
+	lenPlayers := len(httpReqSign.PlayerList)
 	//if lenPlayers == 0{
 	//	return myerr.NewErrorCode(401)
 	//}
@@ -140,7 +129,9 @@ func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, 
 	queueSign.Log.Info("start check player status :")
 	//检查，所有玩家的状态
 	playerStatusElementMap := make( map[int]PlayerStatusElement )
-	for _,player := range players{
+	var  players []Player
+	for _,httpPlayer := range httpReqSign.PlayerList{
+		player := Player{Id: httpPlayer.Uid}
 		playerStatusElement := playerStatus.GetOne(player)
 		//fmt.Printf("playerStatus : %+v",playerStatusElement)
 		//zlib.MyPrint("k : ",k," , playerStatusElement GetOne: ",playerStatusElement)
@@ -177,6 +168,7 @@ func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, 
 			//playerStatusElement = playerStatus.GetOne(player)
 		}
 
+		players  = append(players,player)
 		playerStatusElementMap[player.Id] = playerStatusElement
 	}
 	mylog.Info("finish check player status.")
@@ -203,8 +195,8 @@ func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, 
 	group.Person = len(players)
 	group.Weight = playerWeight
 	group.OutGroupId = outGroupId
-	group.Addition = addition
-	group.CustomProp =  customProp
+	group.Addition = httpReqSign.Addition
+	group.CustomProp =  httpReqSign.CustomProp
 	group.MatchCode = rule.CategoryKey
 	mylog.Info("newGroupId : ",group.Id , "player/group weight : " ,playerWeight ," now : ",now ," expire : ",expire )
 	queueSign.Log.Info("newGroupId : ",group.Id , "player/group weight : " ,playerWeight ," now : ",now ," expire : ",expire)
@@ -240,7 +232,7 @@ func (gamematch *Gamematch) Sign(ruleId int ,outGroupId int, customProp string, 
 	return signSuccessReturnData,nil
 }
 
-func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
+//func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
 	//matchCode,ok := jsonDataMap["matchCode"]
 	//if !ok {
 	//	return data,myerr.NewErrorCode(450)
@@ -272,131 +264,158 @@ func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string
 	//
 	//data.PlayerId =  zlib.Atoi(playerId)
 	//data.RuleId = ruleId
-	return data,nil
-}
+//	return data,nil
+//}
 
-func (gamematch *Gamematch)CheckHttpSignCancelData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
-	matchCode,ok := jsonDataMap["matchCode"]
-	if !ok {
+func (gamematch *Gamematch)CheckHttpSignCancelData(httpReqSignCancel HttpReqSignCancel)(data HttpReqSignCancel,errs error){
+	//matchCode,ok := jsonDataMap["matchCode"]
+	//if !ok {
+	//	return data,myerr.NewErrorCode(450)
+	//}
+	if httpReqSignCancel.MatchCode == ""{
 		return data,myerr.NewErrorCode(450)
 	}
-	if matchCode == ""{
-		return data,myerr.NewErrorCode(450)
-	}
 
-	checkCodeRs := false
-	ruleId := 0
-	for _,rule := range gamematch.RuleConfig.getAll(){
-		if  rule.CategoryKey == matchCode{
-			ruleId = rule.Id
-			checkCodeRs = true
-			break
-		}
+	rule ,err := gamematch.RuleConfig.getByCategory(httpReqSignCancel.MatchCode)
+	if err !=nil{
+		return data,err
 	}
-	if !checkCodeRs{
-		return data,myerr.NewErrorCode(451)
-	}
-
-	groupId ,ok := jsonDataMap["groupId"]
-	if !ok || groupId == ""{
-		playerId,ok := jsonDataMap["playerId"]
-		if !ok || playerId == "" {
+	if httpReqSignCancel.GroupId == 0 && httpReqSignCancel.PlayerId == 0 {
 			return data,myerr.NewErrorCode(457)
-		}
-		data.PlayerId = zlib.Atoi(playerId)
-		data.GroupId =  0
-	}else{
-		data.PlayerId = 0
-		data.GroupId =  zlib.Atoi(groupId)
 	}
 
-	data.RuleId = ruleId
+	httpReqSignCancel.RuleId = rule.Id
+	data = httpReqSignCancel
 	return data,nil
 
 }
-func (gamematch *Gamematch)CheckHttpSignData(jsonDataMap map[string]interface{})(data SignHttpData,errs error){
-	mylog.Debug("CheckHttpSignData",jsonDataMap)
-	matchCodeStr,ok := jsonDataMap["matchCode"]
-	if !ok {
-		return data,myerr.NewErrorCode(450)
+func (gamematch *Gamematch)CheckHttpSignData(httpReqSign HttpReqSign)(returnHttpReqSign HttpReqSign,errs error){
+	if httpReqSign.MatchCode == ""{
+		return returnHttpReqSign,myerr.NewErrorCode(450)
 	}
-	matchCode := matchCodeStr.(string)
-	if matchCode == ""{
-		return data,myerr.NewErrorCode(450)
-	}
-
-
-	checkCodeRs := false
-	ruleId := 0
-	for _,rule := range gamematch.RuleConfig.getAll(){
-		if  rule.CategoryKey == matchCode{
-			ruleId = rule.Id
-			checkCodeRs = true
-			break
-		}
-	}
-	if !checkCodeRs{
-		return data,myerr.NewErrorCode(451)
+	//checkCodeRs := false
+	//ruleId := 0
+	//for _,rule := range gamematch.RuleConfig.getAll(){
+	//	if  rule.CategoryKey == httpReqSign.MatchCode{
+	//		ruleId = rule.Id
+	//		checkCodeRs = true
+	//		break
+	//	}
+	//}
+	//if !checkCodeRs{
+	//	return returnHttpReqSign,myerr.NewErrorCode(451)
+	//}
+	rule ,err := gamematch.RuleConfig.getByCategory(httpReqSign.MatchCode)
+	if err !=nil{
+		return returnHttpReqSign,err
 	}
 
-	groupIdStr,ok := jsonDataMap["groupId"]
-	if !ok {
-		return data,myerr.NewErrorCode(452)
-	}
-	//fmt.Printf("type:%T, value:%+v\n", groupIdStr,groupIdStr)
-	//groupId := zlib.Atoi(groupIdStr.(string))
-	groupId := int(groupIdStr.(float64))
-	if groupId == 0{
-		return data,myerr.NewErrorCode(452)
-	}
 
-	customProp := ""
-	customPropStr,ok := jsonDataMap["customProp"]
-	if !ok {
-		//return data,err.NewErrorCode(453)
-		customProp = ""
-	}else{
-		customProp = customPropStr.(string)
+	////groupId := zlib.Atoi(groupIdStr.(string))
+	//groupId := int(groupIdStr.(float64))
+	if httpReqSign.GroupId == 0{
+		return returnHttpReqSign,myerr.NewErrorCode(452)
 	}
-
-	playerListMap,ok := jsonDataMap["playerList"]
-	if !ok {
-		return data,myerr.NewErrorCode(454)
-	}
-
-//[     map[matchAttr:map[age:10 sex:girl] uid:4] map[matchAttr:map[age:15 sex:man] uid:5]]
-	//fmt.Printf("unexpected type %T", playerListMap)
-	//fmt.Printf("playerListMap : %+v",playerListMap)
-	playerList ,ok := playerListMap.([]interface{})
-	if !ok{
-		return data,myerr.NewErrorCode(455)
-	}
-
 	var playerListStruct []Player
-	for _,v := range playerList{
-		row := v.(map[string]interface{})
-		zlib.MyPrint(row)
-		id ,ok := row["uid"]
-		if !ok {
-			return data,myerr.NewErrorCode(456)
+	for _,v := range httpReqSign.PlayerList{
+		if v.Uid == 0{
+			return returnHttpReqSign,myerr.NewErrorCode(456)
 		}
-
-		pid := int(id.(float64))
-		playerListStruct = append(playerListStruct,Player{Id:pid})
+		playerListStruct = append(playerListStruct,Player{Id:v.Uid})
 	}
+	httpReqSign.RuleId = rule.Id
+	returnHttpReqSign = httpReqSign
 
-	addition := ""
-	additionStr,ok := jsonDataMap["addition"]
-	if ok {
-		addition = additionStr.(string)
-	}
-	data.GroupId = groupId
-	data.PlayersList = playerListStruct
-	data.CustomProp = customProp
-	data.RuleId = ruleId
-	data.Addition = addition
-	return data,nil
+	return returnHttpReqSign,nil
 }
+
+//func (gamematch *Gamematch)CheckHttpSignDataOld(jsonDataMap map[string]interface{})(data SignHttpData,errs error){
+//	httpReqSign := &HttpReqSign{}
+//	zlib.MapCovertStruct(jsonDataMap,httpReqSign)
+//	zlib.ExitPrint(httpReqSign)
+//
+//	mylog.Debug("CheckHttpSignData",jsonDataMap)
+//	matchCodeStr,ok := jsonDataMap["matchCode"]
+//	if !ok {
+//		return data,myerr.NewErrorCode(450)
+//	}
+//	matchCode := matchCodeStr.(string)
+//	if matchCode == ""{
+//		return data,myerr.NewErrorCode(450)
+//	}
+//
+//
+//	checkCodeRs := false
+//	ruleId := 0
+//	for _,rule := range gamematch.RuleConfig.getAll(){
+//		if  rule.CategoryKey == matchCode{
+//			ruleId = rule.Id
+//			checkCodeRs = true
+//			break
+//		}
+//	}
+//	if !checkCodeRs{
+//		return data,myerr.NewErrorCode(451)
+//	}
+//
+//	groupIdStr,ok := jsonDataMap["groupId"]
+//	if !ok {
+//		return data,myerr.NewErrorCode(452)
+//	}
+//	//fmt.Printf("type:%T, value:%+v\n", groupIdStr,groupIdStr)
+//	//groupId := zlib.Atoi(groupIdStr.(string))
+//	groupId := int(groupIdStr.(float64))
+//	if groupId == 0{
+//		return data,myerr.NewErrorCode(452)
+//	}
+//
+//	customProp := ""
+//	customPropStr,ok := jsonDataMap["customProp"]
+//	if !ok {
+//		//return data,err.NewErrorCode(453)
+//		customProp = ""
+//	}else{
+//		customProp = customPropStr.(string)
+//	}
+//
+//	playerListMap,ok := jsonDataMap["playerList"]
+//	if !ok {
+//		return data,myerr.NewErrorCode(454)
+//	}
+//
+////[     map[matchAttr:map[age:10 sex:girl] uid:4] map[matchAttr:map[age:15 sex:man] uid:5]]
+//	//fmt.Printf("unexpected type %T", playerListMap)
+//	//fmt.Printf("playerListMap : %+v",playerListMap)
+//	playerList ,ok := playerListMap.([]interface{})
+//	if !ok{
+//		return data,myerr.NewErrorCode(455)
+//	}
+//
+//	var playerListStruct []Player
+//	for _,v := range playerList{
+//		row := v.(map[string]interface{})
+//		zlib.MyPrint(row)
+//		id ,ok := row["uid"]
+//		if !ok {
+//			return data,myerr.NewErrorCode(456)
+//		}
+//
+//		pid := int(id.(float64))
+//		playerListStruct = append(playerListStruct,Player{Id:pid})
+//	}
+//
+//	addition := ""
+//	additionStr,ok := jsonDataMap["addition"]
+//	if ok {
+//		addition = additionStr.(string)
+//	}
+//	data.GroupId = groupId
+//	data.PlayersList = playerListStruct
+//	data.CustomProp = customProp
+//	data.RuleId = ruleId
+//	data.Addition = addition
+//	return data,nil
+//}
 
 func (gamematch *Gamematch) DemonAll(){
 	queueList := gamematch.RuleConfig.getAll()
@@ -450,6 +469,11 @@ func (gamematch *Gamematch) startHttpd(httpdOption HttpdOption){
 func   mySleepSecond(second time.Duration , msg string){
 	mylog.Info(msg," sleep second ", strconv.Itoa(int(second)))
 	time.Sleep(second * time.Second)
+}
+
+func myGosched(msg string){
+	mylog.Info(msg + " Gosched ..." )
+	runtime.Gosched()
 }
 
 func deadLoopBlock(sleepSecond time.Duration,msg string){

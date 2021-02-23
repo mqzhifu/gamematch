@@ -4,7 +4,20 @@ import "zlib"
 
 var AddRuleFlag = 0
 
+//func json(){
+//	sss := HttpSignRequestData{
+//		matchCode	: "aaaa",
+//		groupId		int
+//		CustomProp	string
+//		playerList	Player
+//		addition	string
+//	}
+//}
+
 func Test(){
+	//json()
+
+
 	//实例化-<日志>-组件
 	logOption := zlib.LogOption{
 		OutFilePath : LOG_BASE_DIR,
@@ -44,6 +57,7 @@ func Test(){
 	}
 
 	myHost := "192.168.31.148"
+	//myHost := "192.168.192.170"
 	myPort := "5678"
 
 	myservice := zlib.NewService(serviceOption)
@@ -57,7 +71,7 @@ func Test(){
 		Log : mylog,
 	}
 	go myGamematch.startHttpd(myHttpdOption)
-	go myGamematch.DemonAll()
+	//go myGamematch.DemonAll()
 	deadLoopBlock(1 , " main ")
 
 	//TestAddRuleData(*myGamematch)
@@ -140,23 +154,23 @@ func getOneRandomPlayerUid()int{
 }
 
 
-func TestSign(myGamematch *Gamematch,ruleId int){
-	//ruleId := 2
-	//playerIdInc := 1
-	signRuleArr := []int{1,5,4,5,3,3,3,2,2,1,1,1,1,5,4,4}
-	for _,playerNumMax := range signRuleArr{
-		var playerStructArr []Player
-		for i:=0;i<playerNumMax;i++{
-			//player := Player{Id:playerIdInc}
-			playerUid := getOneRandomPlayerUid()
-			player := Player{Id:playerUid}
-
-			playerStructArr = append(playerStructArr,player)
-			//playerIdInc++
-		}
-		//rule ,_ := myGamematch.RuleConfig.GetById(ruleId)
-		customProp := "im_customProp"
-		myGamematch.Sign(ruleId,9999,customProp,playerStructArr , "im_addition")
-	}
-}
+//func TestSign(myGamematch *Gamematch,ruleId int){
+//	//ruleId := 2
+//	//playerIdInc := 1
+//	signRuleArr := []int{1,5,4,5,3,3,3,2,2,1,1,1,1,5,4,4}
+//	for _,playerNumMax := range signRuleArr{
+//		var playerStructArr []Player
+//		for i:=0;i<playerNumMax;i++{
+//			//player := Player{Id:playerIdInc}
+//			playerUid := getOneRandomPlayerUid()
+//			player := Player{Id:playerUid}
+//
+//			playerStructArr = append(playerStructArr,player)
+//			//playerIdInc++
+//		}
+//		//rule ,_ := myGamematch.RuleConfig.GetById(ruleId)
+//		customProp := "im_customProp"
+//		myGamematch.Sign(ruleId,9999,customProp,playerStructArr , "im_addition")
+//	}
+//}
 

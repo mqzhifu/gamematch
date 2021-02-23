@@ -183,12 +183,28 @@ func (ruleConfig *RuleConfig)structToStr(rule Rule)string{
 
 
 func (ruleConfig *RuleConfig) GetById(id int ) (Rule,bool){
+	if id == 0{
+		return Rule{},false
+	}
 	rule,ok := ruleConfig.Data[id]
 	return rule,ok
 }
 
 func (ruleConfig *RuleConfig) getAll()map[int]Rule{
 	return ruleConfig.Data
+}
+
+func  (ruleConfig *RuleConfig) getByCategory(category string) (rule Rule ,err error){
+	if category == ""{
+		return rule,myerr.NewErrorCode(450)
+	}
+
+	for _,rule := range ruleConfig.getAll(){
+		if  rule.CategoryKey == category{
+			return rule,nil
+		}
+	}
+	return rule,myerr.NewErrorCode(451)
 }
 
 func (ruleConfig *RuleConfig) getIncId( ) (int){
