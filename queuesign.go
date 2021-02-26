@@ -14,12 +14,14 @@ type QueueSign struct {
 	Mutex 	sync.Mutex
 	Rule 	Rule
 	Log 	*zlib.Log
+	Gamematch	*Gamematch
 }
 
-func NewQueueSign(rule Rule)*QueueSign{
+func NewQueueSign(rule Rule , gamematch *Gamematch)*QueueSign{
 	queueSign := new(QueueSign)
 	queueSign.Rule = rule
 	queueSign.Log = getRuleModuleLogInc(rule.CategoryKey,"sign")
+	queueSign.Gamematch = gamematch
 	return queueSign
 }
 
@@ -269,62 +271,66 @@ func (queueSign *QueueSign) AddOne(group Group){
 //==============以下均是 删除操作======================================
 
 
-//删除所有：池里的报名组、玩家、索引等-有点暴力，尽量不用
-func  (queueSign *QueueSign)  delAll(){
-	key := queueSign.getRedisPrefixKey()
-	myredis.RedisDo("del",key)
-}
+////删除 所有Rule：池里的报名组、玩家、索引等-有点暴力，尽量不用
+//func  (queueSign *QueueSign)  delAll(){
+//	key := queueSign.getRedisPrefixKey()
+//	myredis.RedisDo("del",key)
+//}
 //删除一条规则的所有匹配信息
 func  (queueSign *QueueSign)  delOneRule(){
-	mylog.Info(" delOneRule : ",queueSign.getRedisCatePrefixKey())
-	queueSign.delOneRuleALLGroupElement()
-	queueSign.delOneRuleALLPersonIndex()
-	queueSign.delOneRuleAllGroupSignTimeout()
-	queueSign.delOneRuleALLPlayers()
-	queueSign.delOneRuleALLWeight()
+	mylog.Info(" queueSign delOneRule : ")
+	keys := queueSign.getRedisCatePrefixKey() + "*"
+	myredis.RedisDelAllByPrefix(keys)
+
+	//queueSign.delOneRuleALLGroupElement()
+	//queueSign.delOneRuleALLPersonIndex()
+	//queueSign.delOneRuleAllGroupSignTimeout()
+	//queueSign.delOneRuleALLPlayers()
+	//queueSign.delOneRuleALLWeight()
 }
 //====================================================
 
-//删除一条规则的，所有玩家索引
-func  (queueSign *QueueSign)  delOneRuleALLPlayers( ){
-	key := queueSign.getRedisKeyGroupPlayer()
-	res,_ := redis.Int(myredis.RedisDo("del",key))
-	mylog.Debug("delOneRuleALLPlayers : ",res)
-}
-//删除一条规则的，所有权重索引
-func  (queueSign *QueueSign)  delOneRuleALLWeight( ){
-	key := queueSign.getRedisKeyWeight()
-	res,_ := redis.Int(myredis.RedisDo("del",key))
-	mylog.Debug("delOneRuleALLPlayers : ",res)
-}
+////删除一条规则的，所有玩家索引
+//func  (queueSign *QueueSign)  delOneRuleALLPlayers( ){
+//	key := queueSign.getRedisKeyGroupPlayer()
+//	res,_ := redis.Int(myredis.RedisDo("del",key))
+//	mylog.Debug("delOneRuleALLPlayers : ",res)
+//}
+////删除一条规则的，所有权重索引
+//func  (queueSign *QueueSign)  delOneRuleALLWeight( ){
+//	key := queueSign.getRedisKeyWeight()
+//	res,_ := redis.Int(myredis.RedisDo("del",key))
+//	mylog.Debug("delOneRuleALLPlayers : ",res)
+//}
 //删除一条规则的，所有人数分组索引
-func  (queueSign *QueueSign)  delOneRuleALLPersonIndex( ){
-	for i:=1 ; i <= RuleGroupPersonMax;i++{
-		queueSign.delOneRuleOnePersonIndex(i)
-	}
-}
+//func  (queueSign *QueueSign)  delOneRuleALLPersonIndex( ){
+//	for i:=1 ; i <= RuleGroupPersonMax;i++{
+//		queueSign.delOneRuleOnePersonIndex(i)
+//	}
+//}
+//
+////删除一条规则的，所有分组详细信息
+//func  (queueSign *QueueSign)  delOneRuleALLGroupElement( ){
+//	prefix := queueSign.getRedisKeyGroupElementPrefix()
+//	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
+//	if len(res) == 0{
+//		mylog.Notice(" GroupElement by keys(*) : is empty")
+//		return
+//	}
+//	//zlib.ExitPrint(res,-200)
+//	for _,v := range res{
+//		res,_ := redis.Int(myredis.RedisDo("del",v))
+//		mylog.Debug("del group element v :",res)
+//	}
+//}
 
-//删除一条规则的，所有分组详细信息
-func  (queueSign *QueueSign)  delOneRuleALLGroupElement( ){
-	prefix := queueSign.getRedisKeyGroupElementPrefix()
-	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
-	if len(res) == 0{
-		mylog.Notice(" GroupElement by keys(*) : is empty")
-		return
-	}
-	//zlib.ExitPrint(res,-200)
-	for _,v := range res{
-		res,_ := redis.Int(myredis.RedisDo("del",v))
-		mylog.Debug("del group element v :",res)
-	}
-}
+////删除一条规则的，所有人组超时索引
+//func  (queueSign *QueueSign)  delOneRuleAllGroupSignTimeout( ){
+//	key := queueSign.getRedisKeyGroupSignTimeout()
+//	res,_ := redis.Int(myredis.RedisDo("del",key))
+//	mylog.Debug("delOneRuleALLPlayers : ",res)
+//}
 
-//删除一条规则的，所有人组超时索引
-func  (queueSign *QueueSign)  delOneRuleAllGroupSignTimeout( ){
-	key := queueSign.getRedisKeyGroupSignTimeout()
-	res,_ := redis.Int(myredis.RedisDo("del",key))
-	mylog.Debug("delOneRuleALLPlayers : ",res)
-}
 //删除一条规则的，某一人数各类的，所有人数分组索引
 func  (queueSign *QueueSign)  delOneRuleOnePersonIndex( personNum int){
 	key := queueSign.getRedisKeyPersonIndex(personNum)
@@ -436,20 +442,20 @@ func (queueSign *QueueSign) delOneRuleOneGroupIndex( id int){
 	queueSign.delOneRuleOnePersonIndexById(group.Person,id)
 }
 
-
-func  (queueSign *QueueSign) CheckTimeout( push *Push){
+func  (queueSign *QueueSign) CheckTimeout( ){
 	mylog.Info(" one rule CheckSignTimeout , ruleId : ",queueSign.Rule.Id)
 	queueSign.Log.Info(" one rule CheckSignTimeout , ruleId : ",queueSign.Rule.Id)
 
+	push := queueSign.Gamematch.getContainerPushByRuleId(queueSign.Rule.Id)
 	keys := queueSign.getRedisKeyGroupSignTimeout()
-	inc := 1
-	for {
-		mylog.Info("loop inc : ",inc )
-		queueSign.Log.Info("loop inc : ",inc)
-		if inc >= 2147483647{
-			inc = 0
-		}
-		inc++
+	//inc := 1
+	//for {
+	//	mylog.Info("loop inc : ",inc )
+	//	queueSign.Log.Info("loop inc : ",inc)
+	//	if inc >= 2147483647{
+	//		inc = 0
+	//	}
+	//	inc++
 
 		now := zlib.GetNowTimeSecondToInt()
 		res,err := redis.IntMap(myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(keys).Add(now).Add("-inf").Add("WITHSCORES")...))
@@ -458,7 +464,7 @@ func  (queueSign *QueueSign) CheckTimeout( push *Push){
 		if err != nil{
 			mylog.Error("redis 2 keys err :",err.Error())
 			queueSign.Log.Info("redis 2 keys err :",err.Error())
-			continue
+			return
 		}
 		//res , _:= redis.IntMap(doRes,err)
 		//mylog.Info("sign timeout group element total : ",len(res))
@@ -466,8 +472,8 @@ func  (queueSign *QueueSign) CheckTimeout( push *Push){
 			mylog.Notice(" empty , no need process")
 			queueSign.Log.Info(" empty , no need process")
 			//myGosched("sign CheckTimeout")
-			mySleepSecond(1, " sign CheckTimeout ")
-			continue
+			//mySleepSecond(1, " sign CheckTimeout ")
+			return
 		}
 		for groupIdStr,_ := range res{
 			groupId := zlib.Atoi(groupIdStr)
@@ -478,10 +484,9 @@ func  (queueSign *QueueSign) CheckTimeout( push *Push){
 			push.addOnePush(groupId,PushCategorySignTimeout,payload)
 			queueSign.Log.Info("delOneRuleOneGroup")
 			queueSign.delOneRuleOneGroup(groupId,1)
-
 			//zlib.ExitPrint(-199)
 		}
 		//myGosched("sign CheckTimeout")
-		mySleepSecond(1," sign CheckTimeout ")
-	}
+		//mySleepSecond(1," sign CheckTimeout ")
+	//}
 }

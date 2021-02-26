@@ -2,7 +2,7 @@ package gamematch
 
 import (
 	"encoding/json"
-	"errors"
+	"flag"
 	"net/http"
 	"strconv"
 	"strings"
@@ -37,6 +37,7 @@ type Httpd struct {
 	Option HttpdOption
 	Gamematch *Gamematch
 	Log *zlib.Log
+	HttpServer *http.Server
 }
 //实例化 初始值
 type HttpdOption struct {
@@ -55,20 +56,66 @@ func NewHttpd(httpdOption HttpdOption,gamematch *Gamematch) *Httpd{
 }
 //开启HTTP监听
 func (httpd *Httpd)Start()error{
-	//监听根目录uri
-	http.HandleFunc("/", httpd.RouterHandler)
-	dns := httpd.Option.Host + ":" + httpd.Option.Port
-	httpd.Option.Log.Info("httpd start loop:",dns , " Listen : /")
-	httpd.Log.Info("httpd start loop:",dns , " Listen : /")
+	httpd.StartHttpLisnten()
 
-	err := http.ListenAndServe(dns, nil)
-	if err != nil {
-		return errors.New("http.ListenAndServe() err :  " + err.Error())
+	for k,_:=range httpd.Gamematch.HttpdRuleState{
+		httpd.Gamematch.HttpdRuleState[k] = 1
 	}
-	return nil
+
+	myChan := httpd.Gamematch.getNewSignalChan(0,"httpd")
+	//for{
+	//	select {
+	//		case  httpd.Gamematch.signReceive(myChan,"httpd") :
+				//httpd.Log.Warning(SIGNAL_RECE_DESC ,sign , " httpd")
+				//mylog.Warning(SIGNAL_RECE_DESC ,sign , " in httpd goRuntine")
+
+	httpd.Gamematch.signReceive(myChan,"httpd")
+
+	httpd.HttpServer.Shutdown(nil)
+
+				//httpd.Log.Warning(SIGNAL_SEND_DESC  , SIGN_GOROUTINE_EXIT_FINISH )
+				//mylog.Warning(SIGNAL_SEND_DESC  , SIGN_GOROUTINE_EXIT_FINISH)
+	httpd.Gamematch.signSend(myChan,SIGNAL_GOROUTINE_EXIT_FINISH,"httpd")
+				//myChan <- SIGN_GOROUTINE_EXIT_FINISH
+				//goto endLoop
+		//}
+	//}
+	//endLoop :
+	//	mylog.Warning("httpd goRoutune end")
+	//	httpd.Log.Warning("httpd goRoutune end")
+		return nil
+}
+func (httpd *Httpd)StartHttpLisnten(){
+	dns := httpd.Option.Host + ":" + httpd.Option.Port
+	var addr = flag.String("server addr", dns, "server address")
+	httpServer := & http.Server{
+		Addr:*addr,
+	}
+
+	http.HandleFunc("/", httpd.RouterHandler)
+
+
+	httpd.HttpServer = httpServer
+
+	httpd.Option.Log.Info("httpd start loop:",dns , " Listen : /")
+	go httpServer.ListenAndServe()
+
+
+
+	////监听根目录uri
+	//http.HandleFunc("/", httpd.RouterHandler)
+	//dns := httpd.Option.Host + ":" + httpd.Option.Port
+	//httpd.Option.Log.Info("httpd start loop:",dns , " Listen : /")
+	//httpd.Log.Info("httpd start loop:",dns , " Listen : /")
+	//
+	//err := http.ListenAndServe(dns, nil)
+	//if err != nil {
+	//	httpd.Log.Error("http.ListenAndServe() err :  " + err.Error())
+	//}
 }
 //主要，是接收HTTP 回调
 func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
+
 	parameter := r.URL.Query()//GET 方式URL 中的参数 转 结构体
 	uri := r.URL.RequestURI()
 

@@ -1,23 +1,12 @@
 package gamematch
 
-import "zlib"
+import (
+	"zlib"
+)
 
 var AddRuleFlag = 0
 
-//func json(){
-//	sss := HttpSignRequestData{
-//		matchCode	: "aaaa",
-//		groupId		int
-//		CustomProp	string
-//		playerList	Player
-//		addition	string
-//	}
-//}
-
 func Test(){
-	//json()
-
-
 	//实例化-<日志>-组件
 	logOption := zlib.LogOption{
 		OutFilePath : LOG_BASE_DIR,
@@ -71,7 +60,7 @@ func Test(){
 		Log : mylog,
 	}
 	go myGamematch.startHttpd(myHttpdOption)
-	//go myGamematch.DemonAll()
+	go myGamematch.DemonAll()
 	deadLoopBlock(1 , " main ")
 
 	//TestAddRuleData(*myGamematch)

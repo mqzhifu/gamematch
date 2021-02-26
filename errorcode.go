@@ -57,6 +57,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "621, etcd rule value is empty,error, ")
 	container = append(container, "622, etcd rule json.Unmarshal err {0},error, ")
 	container = append(container, "623, playerStatus not equal Sign {0},error, ")
+	container = append(container, "624, etcd rule status != online ,error, ")
 
 	//push相关
 	container = append(container, "700, push respone code err {0},error, ")
@@ -67,6 +68,8 @@ func getErrorCode() (container []string) {
 	container = append(container, "800,http content = 0 ,post data is empty ,error,该接口需要POST数据，但数据为空")
 	container = append(container, "801,http no route this uri ,error,请求URI无法路由到具体方法")
 	container = append(container, "802,post data is empty,error,数据为空")
+	container = append(container, "803,HttpdRuleState error,error,该rule未初始化")
+	container = append(container, "804,state != HTTPD_RULE_STATE_OK,error,该rule的httpd接口，未开启")
 
 	//系统级别错误
 	container = append(container, "900,get ErrorCode container is null ,error,获取错误码配置表为空")

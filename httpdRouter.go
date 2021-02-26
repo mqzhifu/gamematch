@@ -13,6 +13,16 @@ func  (httpd *Httpd)getConstList(){
 	doc := zlib.NewDocRegular(fileDir)
 	doc.ParseConst()
 }
+func  (httpd *Httpd)checkHttpdState(ruleId int)(bool,error){
+	state ,ok := httpd.Gamematch.HttpdRuleState[ruleId]
+	if !ok {
+		return false,myerr.NewErrorCode(803)
+	}
+	if state == HTTPD_RULE_STATE_OK{
+		return true,nil
+	}
+	return false,myerr.NewErrorCode(804)
+}
 //获取错误码
 func  (httpd *Httpd)getErrorInfoHandler()(code int ,msg interface{}){
 	httpd.Log.Info(" routing in getErrorInfoHandler : ")
@@ -97,6 +107,13 @@ func  (httpd *Httpd)signHandler( postJsonStr string)(code int ,msg interface{}){
 
 		return errInfo.Code,errInfo.Msg
 	}
+	_,err  = httpd.checkHttpdState(newHttpReqSign.RuleId)
+	if err != nil{
+		errInfo := zlib.ErrInfo{}
+		json.Unmarshal([]byte(errs.Error()),&errInfo)
+
+		return errInfo.Code,errInfo.Msg
+	}
 	//signRsData, errs := httpd.Gamematch.Sign(data.RuleId,data.GroupId,data.CustomProp,data.PlayersList,data.Addition)
 	signRsData, errs := httpd.Gamematch.Sign(newHttpReqSign)
 	if errs != nil{
@@ -130,6 +147,14 @@ func  (httpd *Httpd)signCancelHandler(postJsonStr string)(code int ,msg interfac
 		errInfo := zlib.ErrInfo{}
 		json.Unmarshal([]byte(errs.Error()),&errInfo)
 		return errInfo.Code,  errInfo.Msg
+	}
+
+	_,err  = httpd.checkHttpdState(data.RuleId)
+	if err != nil{
+		errInfo := zlib.ErrInfo{}
+		json.Unmarshal([]byte(errs.Error()),&errInfo)
+
+		return errInfo.Code,errInfo.Msg
 	}
 
 	signClass := httpd.Gamematch.getContainerSignByRuleId(data.RuleId)

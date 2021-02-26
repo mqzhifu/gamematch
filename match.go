@@ -12,19 +12,22 @@ type Match struct {
 	QueueSign *QueueSign
 	QueueSuccess *QueueSuccess
 	Push 	*Push
+	Gamematch	*Gamematch
 	rangeStart	string
 	rangeEnd	string
 	Log *zlib.Log
 }
 
-func NewMatch(rule Rule,queueSign *QueueSign,queueSuccess *QueueSuccess,push *Push)*Match{
+func NewMatch(rule Rule , gamematch *Gamematch)*Match{
 	match := new(Match)
 	match.Rule = rule
-	match.QueueSign = queueSign
-	match.QueueSuccess = queueSuccess
-	match.Push = push
+	match.Gamematch = gamematch
 	match.rangeStart = ""
 	match.rangeEnd = ""
+
+	match.QueueSign = match.Gamematch.getContainerSignByRuleId(rule.Id)
+	match.QueueSuccess = match.Gamematch.getContainerSuccessByRuleId(rule.Id)
+	match.Push = match.Gamematch.getContainerPushByRuleId(rule.Id)
 
 	match.Log = getRuleModuleLogInc(rule.CategoryKey,"matching")
 	return match
@@ -32,11 +35,11 @@ func NewMatch(rule Rule,queueSign *QueueSign,queueSuccess *QueueSuccess,push *Pu
 //一条rule 的匹配
 func (match *Match) start(){
 	mylog.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
-	for{
+	//for{
 	 	match.matching()
-	 	match.Log.Info("sleep 1")
-		mySleepSecond(1, "  matching start ")
-	}
+	 	//match.Log.Info("sleep 1")
+		//mySleepSecond(1, "  matching start ")
+	//}
 }
 //一次完整的匹配大流程
 func  (match *Match)  matching() {

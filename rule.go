@@ -2,6 +2,7 @@ package gamematch
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"strconv"
 	"strings"
@@ -48,6 +49,7 @@ type GamesMatchConfig struct {
 
 type RuleConfig struct {
 	Data map[int]Rule
+	gamematch *Gamematch
 }
 
 func (ruleConfig *RuleConfig) getRedisKey()string{
@@ -59,7 +61,7 @@ func (ruleConfig *RuleConfig) getRedisIncKey()string{
 }
 
 //初始化
-func   NewRuleConfig ()(*RuleConfig,error){
+func   NewRuleConfig (gamematch *Gamematch)(*RuleConfig,error){
 	rule := new (RuleConfig)
 	rule.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
@@ -72,10 +74,120 @@ func   NewRuleConfig ()(*RuleConfig,error){
 	for _,v := range ruleList{
 		mylog.Info("match code : ",v.CategoryKey)
 	}
-
+	rule.gamematch = gamematch
 	rule.Data = ruleList
-
+	go rule.watchEtcdChange()
 	return rule,nil
+}
+
+func (ruleConfig *RuleConfig)watchEtcdChange( ){
+	watchChann := myetcd.Watch(RuleEtcdConfigPrefix)
+	prefix := "etcd watching"
+	//watchChann := myetcd.Watch("/testmatch")
+	for wresp := range watchChann{
+		for _, ev := range wresp.Events{
+			action := ev.Type.String()
+			key := string(ev.Kv.Key)
+			val := string(ev.Kv.Value)
+			mylog.Warning(prefix , " has event : ",action)
+			mylog.Warning(prefix , " key : ",key)
+			mylog.Warning(prefix , " val : ",val)
+
+			//zlib.MyPrint(ev.Type.String(), string(ev.Kv.Key), string(ev.Kv.Value))
+			//fmt.Printf("%s %q:%q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+
+			matchCode := strings.Replace(key,RuleEtcdConfigPrefix,"",-1)
+			matchCode = strings.Trim(matchCode," ")
+			matchCode = strings.Trim(matchCode,"/")
+			mylog.Warning(prefix , " matchCode : ",matchCode)
+
+			rule,ruleErr := ruleConfig.getByCategory(matchCode)
+			fmt.Printf("%+v",rule)
+			if ev.Type.String() == "PUT"{
+				mylog.Warning(prefix ," action PUT : ruleErr ,",ruleErr)
+				if ruleErr != nil{
+					mylog.Error("etcd event DELETE rule ,but Value no match rule , may add new rule~")
+				}else{
+					ruleConfig.gamematch.closeOneRuleDemonRoutine(rule.Id)
+					ruleConfig.delOne(rule.Id)
+				}
+				newRule,err := ruleConfig.parseOneConfigByEtcd(key,val)
+				if err != nil{
+					mylog.Error("etcd monitor:",err.Error())
+				}else{
+					//新添加一条rule
+					ruleConfig.Data[newRule.Id] = rule
+					ruleConfig.gamematch.startOneRuleDomon(newRule)
+					//mySleepSecond(3,"testtest")
+					//zlib.ExitPrint(111111)
+				}
+			}else if ev.Type.String() == "DELETE"{
+				mylog.Warning(prefix ," action DELETE : ruleErr ,",ruleErr)
+				if ruleErr != nil{
+					mylog.Error("etcd event DELETE rule ,but Value no match rule!!!")
+				}else{
+					ruleConfig.gamematch.closeOneRuleDemonRoutine(rule.Id)
+					ruleConfig.delOne(rule.Id)
+				}
+			}
+		}
+	}
+	//zlib.ExitPrint(watchChann)
+}
+
+func (ruleConfig *RuleConfig)delOne(ruleId int){
+	delete(ruleConfig.Data,ruleId)
+
+	queueSign := ruleConfig.gamematch.getContainerSignByRuleId(ruleId)
+	queueSign.delOneRule()
+
+	push := ruleConfig.gamematch.getContainerPushByRuleId(ruleId)
+	push.delOneRule()
+
+	queueSuccess := ruleConfig.gamematch.getContainerSuccessByRuleId(ruleId)
+	queueSuccess.delOneRule()
+
+
+
+}
+
+func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,err error){
+	if k == ""{
+		return rule,myerr.NewErrorCode(620)
+	}
+	if v == ""{
+		return rule,myerr.NewErrorCode(621)
+	}
+	//zlib.MyPrint(v)
+	gamesMatchConfig := GamesMatchConfig{}
+	err = json.Unmarshal( []byte(v), & gamesMatchConfig)
+	if err != nil{
+		msg := myerr.MakeOneStringReplace(err.Error())
+		myerr.NewErrorCodeReplace(622,msg)
+		return rule,err
+	}
+
+	if gamesMatchConfig.Status != RuleStatusOnline{
+		return rule,myerr.NewErrorCode(624)
+	}
+
+	playerWeightRow := PlayerWeight{}
+	rule  = Rule{
+		Id: gamesMatchConfig.Id,
+		AppId: gamesMatchConfig.Id,
+		CategoryKey : gamesMatchConfig.MatchCode,
+		MatchTimeout: gamesMatchConfig.Timeout,
+		SuccessTimeout: gamesMatchConfig.SuccessTimeout,
+		IsSupportGroup: 1,
+
+		Flag:gamesMatchConfig.TeamType,
+		TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
+		PersonCondition: gamesMatchConfig.MaxPlayers,
+		GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
+		PlayerWeight: playerWeightRow,
+	}
+
+	return rule,err
 }
 
 func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
@@ -86,41 +198,42 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 	}
 	//i := 1
 	for k,v := range etcdRuleList{
-		matchCode := strings.Replace(k,RuleEtcdConfigPrefix,"",-1)
-		matchCode = strings.Trim(matchCode," ")
-		matchCode = strings.Trim(matchCode,"/")
-		if k == ""{
-			myerr.NewErrorCode(620)
-			continue
-		}
-		if v == ""{
-			myerr.NewErrorCode(621)
-			continue
-		}
-		//zlib.MyPrint(v)
-		gamesMatchConfig := GamesMatchConfig{}
-		err := json.Unmarshal( []byte(v), & gamesMatchConfig)
+		//matchCode := strings.Replace(k,RuleEtcdConfigPrefix,"",-1)
+		//matchCode = strings.Trim(matchCode," ")
+		//matchCode = strings.Trim(matchCode,"/")
+		//if k == ""{
+		//	myerr.NewErrorCode(620)
+		//	continue
+		//}
+		//if v == ""{
+		//	myerr.NewErrorCode(621)
+		//	continue
+		//}
+		////zlib.MyPrint(v)
+		//gamesMatchConfig := GamesMatchConfig{}
+		//err := json.Unmarshal( []byte(v), & gamesMatchConfig)
+		ruleRow,err := ruleConfig.parseOneConfigByEtcd(k,v)
 		if err != nil{
-			msg := myerr.MakeOneStringReplace(err.Error())
-			myerr.NewErrorCodeReplace(622,msg)
+			//msg := myerr.MakeOneStringReplace(err.Error())
+			//myerr.NewErrorCodeReplace(622,msg)
 			continue
 		}
 		//fmt.Printf("%+v",gamesMatchConfig)
-		playerWeightRow := PlayerWeight{}
-		ruleRow := Rule{
-			Id: gamesMatchConfig.Id,
-			AppId: gamesMatchConfig.Id,
-			CategoryKey : matchCode,
-			MatchTimeout: gamesMatchConfig.Timeout,
-			SuccessTimeout: gamesMatchConfig.SuccessTimeout,
-			IsSupportGroup: 1,
-
-			Flag:gamesMatchConfig.TeamType,
-			TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
-			PersonCondition: gamesMatchConfig.MaxPlayers,
-			GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
-			PlayerWeight: playerWeightRow,
-		}
+		//playerWeightRow := PlayerWeight{}
+		//ruleRow := Rule{
+		//	Id: gamesMatchConfig.Id,
+		//	AppId: gamesMatchConfig.Id,
+		//	CategoryKey : gamesMatchConfig.MatchCode,
+		//	MatchTimeout: gamesMatchConfig.Timeout,
+		//	SuccessTimeout: gamesMatchConfig.SuccessTimeout,
+		//	IsSupportGroup: 1,
+		//
+		//	Flag:gamesMatchConfig.TeamType,
+		//	TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
+		//	PersonCondition: gamesMatchConfig.MaxPlayers,
+		//	GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
+		//	PlayerWeight: playerWeightRow,
+		//}
 		//fmt.Printf("%+v",gamesMatchConfig)
 		//zlib.ExitPrint(gamesMatchConfig)
 		_,err =  ruleConfig.CheckRuleByElement(ruleRow)

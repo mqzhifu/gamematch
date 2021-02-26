@@ -27,17 +27,20 @@ type Push struct {
 	//queueSign 	*QueueSign
 	QueueSuccess	*QueueSuccess
 	Log 		*zlib.Log
+	Gamematch	*Gamematch
 }
 
-func NewPush(rule Rule)*Push{
+func NewPush(rule Rule,gamematch *Gamematch)*Push{
 	push := new(Push)
 	push.Rule = rule
 
 
 	//push.queueSign = NewQueueSign(rule)
 	//这里有个问题，循环 new
-	push.QueueSuccess = NewQueueSuccess(rule,push)
+	//push.QueueSuccess = NewQueueSuccess(rule,push)
+	push.QueueSuccess = gamematch.getContainerSuccessByRuleId(rule.Id)
 	push.Log = getRuleModuleLogInc(rule.CategoryKey,"push")
+	push.Gamematch = gamematch
 	return push
 }
 
@@ -138,36 +141,38 @@ func (push *Push) pushStructToStr(pushElement PushElement)string{
 	return str
 }
 
-func (push *Push)   delAll(){
-	key := push.getRedisPrefixKey()
-	myredis.RedisDo("del",key)
-}
+//func (push *Push)   delAll(){
+//	key := push.getRedisPrefixKey()
+//	myredis.RedisDo("del",key)
+//}
 
 func (push *Push)   delOneRule(){
-	mylog.Debug(" push delOneRule : ",push.getRedisCatePrefixKey())
-	push.delAllPush()
-	push.delAllStatus()
+	mylog.Debug(" push delOneRule : ",)
+	key := push.getRedisCatePrefixKey()+ "*"
+	myredis.RedisDelAllByPrefix(key)
+	//push.delAllPush()
+	//push.delAllStatus()
 }
 
-func  (push *Push)  delAllPush( ){
-	prefix := push.getRedisCatePrefixKey()
-	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
-	if len(res) == 0{
-		mylog.Notice(" GroupElement by keys(*) : is empty")
-		return
-	}
-	//zlib.ExitPrint(res,-200)
-	for _,v := range res{
-		res,_ := redis.Int(myredis.RedisDo("del",v))
-		zlib.MyPrint("del group element v :",res)
-	}
-}
-
-func  (push *Push)  delAllStatus( ){
-	key := push.getRedisKeyPushStatus()
-	res,_ := redis.Strings( myredis.RedisDo("del",key ))
-	mylog.Debug("delAllStatus :",res)
-}
+//func  (push *Push)  delAllPush( ){
+//	prefix := push.getRedisCatePrefixKey()
+//	res,_ := redis.Strings( myredis.RedisDo("keys",prefix + "*"  ))
+//	if len(res) == 0{
+//		mylog.Notice(" GroupElement by keys(*) : is empty")
+//		return
+//	}
+//	//zlib.ExitPrint(res,-200)
+//	for _,v := range res{
+//		res,_ := redis.Int(myredis.RedisDo("del",v))
+//		zlib.MyPrint("del group element v :",res)
+//	}
+//}
+//
+//func  (push *Push)  delAllStatus( ){
+//	key := push.getRedisKeyPushStatus()
+//	res,_ := redis.Strings( myredis.RedisDo("del",key ))
+//	mylog.Debug("delAllStatus :",res)
+//}
 
 func  (push *Push)  delOneStatus( pushId int){
 	key := push.getRedisKeyPushStatus()
@@ -196,25 +201,25 @@ func  (push *Push)  upRetryPushInfo(element PushElement ){
 	push.Log.Info("add  new pushStatus index : ",res,err)
 	mylog.Info("add  new pushStatus index : ",res,err)
 }
-func  (push *Push)  checkStatus(){
-	mylog.Info("start one rule checkStatus : ")
-	key := push.getRedisKeyPushStatus()
 
-	inc := 1
-	for {
-		mylog.Info("loop inc : ",inc )
-		if inc >= 2147483647{
-			inc = 0
-		}
-		inc++
-		push.Log.Info("loop inc ",inc)
+func  (push *Push)  checkStatus(){
+	mylog.Info("one rule checkStatus : ")
+	key := push.getRedisKeyPushStatus()
+	//inc := 1
+	//for {
+	//	mylog.Info("loop inc : ",inc )
+	//	if inc >= 2147483647{
+	//		inc = 0
+	//	}
+	//	inc++
+	//	push.Log.Info("loop inc ",inc)
 
 		push.checkOneByStatus(key,PushStatusWait)
 		push.checkOneByStatus(key,PushStatusRetry)
 
 		//myGosched("push checkStatus")
-		mySleepSecond(1, "  push checkStatus")
-	}
+		//mySleepSecond(1, "  push checkStatus")
+	//}
 
 }
 

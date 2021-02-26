@@ -25,7 +25,50 @@ const(
 	RuleSuccessTimeoutMin 	= 60	//匹配成功后，最短超时时间
 
 	RuleEtcdConfigPrefix = "/v1/conf/matches/"	//etcd中  ， 存放 rule  集合的前缀
+
+	RuleStatusOnline  = 1
+	RuleStatusOffline = 1
+	RuleStatusDelete  = 1
 )
+
+const (
+	SIGNAL_GOROUTINE_EXEC_EXIT = 1	//通知协程，执行结束操作
+	SIGNAL_GOROUTINE_EXIT_FINISH = 2	//协程，通知父协程，已结束
+	SIGNAL_EXIT =	3 //结束所有后台守护协程，退出程序
+
+	SIGNAL_QUIT_SOURCE = 4
+	SIGNAL_QUIT_SOURCE_RULE_WATCH = 5
+
+	//SIGNAL_SEND_DESC = "SIGNAL send: "
+	//SIGNAL_RECE_DESC = "SIGNAL receive: "
+	//SIGNAL_NEW_CHAN_DESC = "SIGNAL new chan: "
+
+)
+
+func getSignalDesc(signal int)string{
+	switch signal {
+		case SIGNAL_GOROUTINE_EXEC_EXIT:
+			return "请执行协程退出"
+		case SIGNAL_GOROUTINE_EXIT_FINISH:
+			return "协程已退出"
+		case SIGNAL_QUIT_SOURCE:
+			return "退出来源1"
+		case SIGNAL_QUIT_SOURCE_RULE_WATCH:
+			return "退出来源~rule发生变更"
+		default:
+			return "signal错误"
+	}
+}
+
+const(
+	HTTPD_RULE_STATE_INIT = 1
+	HTTPD_RULE_STATE_OK = 2
+	HTTPD_RULE_STATE_CLOSE = 3
+	HTTPD_RULE_STATE_UKNOW = 4
+)
+
+
+
 //微服务
 const(
 	SERVICE_PREFIX = "/v1/service"		//微服务前缀
@@ -38,7 +81,7 @@ const (
 	LOG_BASE_DIR 			= "/data/www/golang/src/logs"
 	LOG_FILE_NAME			= "gamematch"
 	LOG_LEVEL				= zlib.LEVEL_ALL
-	LOG_TARGET 				= 15
+	LOG_TARGET 				= 7
 
 	separation 				= "#"		//redis 内容-字符串分隔符
 	PayloadSeparation		= "%"		//push时的内容，缓存进redis时
