@@ -46,61 +46,58 @@ type HttpdOption struct {
 	Log 	*zlib.Log
 }
 //实例化
-func NewHttpd(httpdOption HttpdOption,gamematch *Gamematch) *Httpd{
+func NewHttpd(httpdOption HttpdOption,gamematch *Gamematch)(httpd  *Httpd,err error){
 	httpdOption.Log.Info("NewHttpd : ",httpdOption)
-	httpd := new (Httpd)
+	httpd = new (Httpd)
 	httpd.Option = httpdOption
 	httpd.Gamematch = gamematch
-	httpd.Log = getModuleLogInc("httpd")
-	return httpd
+	newLog ,err  := getModuleLogInc("httpd")
+	if err != nil{
+		return httpd,err
+	}
+	httpd.Log = newLog
+	return httpd,nil
 }
 //开启HTTP监听
 func (httpd *Httpd)Start()error{
 	httpd.StartHttpLisnten()
-
-	for k,_:=range httpd.Gamematch.HttpdRuleState{
-		httpd.Gamematch.HttpdRuleState[k] = 1
-	}
-
-	myChan := httpd.Gamematch.getNewSignalChan(0,"httpd")
-	//for{
-	//	select {
-	//		case  httpd.Gamematch.signReceive(myChan,"httpd") :
-				//httpd.Log.Warning(SIGNAL_RECE_DESC ,sign , " httpd")
-				//mylog.Warning(SIGNAL_RECE_DESC ,sign , " in httpd goRuntine")
-
-	httpd.Gamematch.signReceive(myChan,"httpd")
-
-	httpd.HttpServer.Shutdown(nil)
-
-				//httpd.Log.Warning(SIGNAL_SEND_DESC  , SIGN_GOROUTINE_EXIT_FINISH )
-				//mylog.Warning(SIGNAL_SEND_DESC  , SIGN_GOROUTINE_EXIT_FINISH)
-	httpd.Gamematch.signSend(myChan,SIGNAL_GOROUTINE_EXIT_FINISH,"httpd")
-				//myChan <- SIGN_GOROUTINE_EXIT_FINISH
-				//goto endLoop
-		//}
+	////将所有rule的HTTPD请求状态都打开，允许外面访问
+	//for k,_:=range httpd.Gamematch.HttpdRuleState{
+	//	httpd.Gamematch.HttpdRuleState[k] = HTTPD_RULE_STATE_OK
 	//}
-	//endLoop :
-	//	mylog.Warning("httpd goRoutune end")
-	//	httpd.Log.Warning("httpd goRoutune end")
-		return nil
+	//获取一个管道，用于接收停止信号
+	myChan := httpd.Gamematch.getNewSignalChan(0,"httpd")
+	//阻塞，等待接收信号
+	httpd.Gamematch.signReceive(myChan,"httpd")
+	//一但执行到这里，就证明接收到了信号(关闭)
+	httpd.HttpServer.Shutdown(nil)
+	//发送信号给管道，告知，HTTPD守护协程已结束成功
+	httpd.Gamematch.signSend(myChan,SIGNAL_GOROUTINE_EXIT_FINISH,"httpd")
+
+	mylog.Warning("httpd goRoutune end")
+	httpd.Log.Warning("httpd goRoutune end")
+	return nil
 }
+//开启http 守护监听 协程
 func (httpd *Httpd)StartHttpLisnten(){
 	dns := httpd.Option.Host + ":" + httpd.Option.Port
 	var addr = flag.String("server addr", dns, "server address")
 	httpServer := & http.Server{
 		Addr:*addr,
 	}
-
+	//监听目录：/，设置统一回调函数
 	http.HandleFunc("/", httpd.RouterHandler)
 
-
 	httpd.HttpServer = httpServer
-
 	httpd.Option.Log.Info("httpd start loop:",dns , " Listen : /")
-	go httpServer.ListenAndServe()
-
-
+	go func (){
+		err := httpServer.ListenAndServe()
+		if err != nil{
+			mylog.Error("http.ListenAndServe() err :  " + err.Error())
+			httpd.Log.Error("http.ListenAndServe() err :  " + err.Error())
+			zlib.ExitPrint("http.ListenAndServe() err")
+		}
+	}()
 
 	////监听根目录uri
 	//http.HandleFunc("/", httpd.RouterHandler)
@@ -138,7 +135,7 @@ func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
 		postDataMap = GetPostDataMap
 		postJsonStr = myJsonStr
 	}else{
-		//this is get method
+		//this is GET method
 	}
 	//time.Now().Format("2006-01-02 15:04:05")
 	if r.URL.RequestURI() == "/favicon.ico" {//浏览器的ICON
@@ -158,15 +155,15 @@ func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
 	//*********: 还没有加  v1  v2 版本号
 	code := 200
 	var msg interface{}
-	if uri == "/sign" {
+	if uri == "/sign" {//报名
 		code,msg = httpd.signHandler(postJsonStr)
-	}else if uri == "/sign/cancel"{
+	}else if uri == "/sign/cancel"{//取消报名
 		code,msg = httpd.signCancelHandler(postJsonStr)
-	}else if uri == "/rule/add" {
+	}else if uri == "/rule/add" {//添加一条rule
 		//code,msg = httpd.ruleAddOne(postDataMap)
-	}else if uri == "/getErrorInfo" {
+	}else if uri == "/getErrorInfo" {//所有错误码列表
 		code,msg = httpd.getErrorInfoHandler()
-	}else if uri == "/clearRuleByCode"{
+	}else if uri == "/clearRuleByCode"{//清空一条rule的所有数组，用于测试
 		code,msg = httpd.clearRuleByCodeHandler(postDataMap)
 	}else{
 		code = 500

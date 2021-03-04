@@ -2,7 +2,6 @@ package gamematch
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"strconv"
 	"strings"
@@ -81,18 +80,18 @@ func   NewRuleConfig (gamematch *Gamematch)(*RuleConfig,error){
 }
 
 func (ruleConfig *RuleConfig)watchEtcdChange( ){
-	watchChann := myetcd.Watch(RuleEtcdConfigPrefix)
 	prefix := "etcd watching"
+	watchChann := myetcd.Watch(RuleEtcdConfigPrefix)
+	mylog.Notice(prefix , " , new key : ",RuleEtcdConfigPrefix)
 	//watchChann := myetcd.Watch("/testmatch")
 	for wresp := range watchChann{
 		for _, ev := range wresp.Events{
 			action := ev.Type.String()
 			key := string(ev.Kv.Key)
 			val := string(ev.Kv.Value)
-			mylog.Warning(prefix , " has event : ",action)
+			mylog.Warning(prefix , " chan has event : ",action)
 			mylog.Warning(prefix , " key : ",key)
 			mylog.Warning(prefix , " val : ",val)
-
 			//zlib.MyPrint(ev.Type.String(), string(ev.Kv.Key), string(ev.Kv.Value))
 			//fmt.Printf("%s %q:%q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 
@@ -102,11 +101,11 @@ func (ruleConfig *RuleConfig)watchEtcdChange( ){
 			mylog.Warning(prefix , " matchCode : ",matchCode)
 
 			rule,ruleErr := ruleConfig.getByCategory(matchCode)
-			fmt.Printf("%+v",rule)
+			//fmt.Printf("%+v",rule)
 			if ev.Type.String() == "PUT"{
 				mylog.Warning(prefix ," action PUT : ruleErr ,",ruleErr)
 				if ruleErr != nil{
-					mylog.Error("etcd event DELETE rule ,but Value no match rule , may add new rule~")
+					mylog.Error("etcd event DELETE rule ,but Value no match rule , maybe add new rule~")
 				}else{
 					ruleConfig.gamematch.closeOneRuleDemonRoutine(rule.Id)
 					ruleConfig.delOne(rule.Id)
@@ -116,13 +115,14 @@ func (ruleConfig *RuleConfig)watchEtcdChange( ){
 					mylog.Error("etcd monitor:",err.Error())
 				}else{
 					//新添加一条rule
-					ruleConfig.Data[newRule.Id] = rule
+					ruleConfig.Data[newRule.Id] = newRule
 					ruleConfig.gamematch.startOneRuleDomon(newRule)
+					//ruleConfig.gamematch.HttpdRuleState[newRule.Id] = HTTPD_RULE_STATE_OK
 					//mySleepSecond(3,"testtest")
 					//zlib.ExitPrint(111111)
 				}
 			}else if ev.Type.String() == "DELETE"{
-				mylog.Warning(prefix ," action DELETE : ruleErr ,",ruleErr)
+				mylog.Warning(prefix ," dvent = DELETE : ruleErr ,",ruleErr)
 				if ruleErr != nil{
 					mylog.Error("etcd event DELETE rule ,but Value no match rule!!!")
 				}else{
@@ -136,6 +136,11 @@ func (ruleConfig *RuleConfig)watchEtcdChange( ){
 }
 
 func (ruleConfig *RuleConfig)delOne(ruleId int){
+	_, ok  := ruleConfig.GetById(ruleId)
+	if !ok {
+		mylog.Error("ruleConfig.GetByI is empty~")
+		return
+	}
 	delete(ruleConfig.Data,ruleId)
 
 	queueSign := ruleConfig.gamematch.getContainerSignByRuleId(ruleId)
@@ -147,8 +152,10 @@ func (ruleConfig *RuleConfig)delOne(ruleId int){
 	queueSuccess := ruleConfig.gamematch.getContainerSuccessByRuleId(ruleId)
 	queueSuccess.delOneRule()
 
-
-
+	playerIds := playerStatus.getOneRuleAllPlayer(ruleId)
+	for _,playerId := range playerIds{
+		playerStatus.delOneById(zlib.Atoi(playerId))
+	}
 }
 
 func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,err error){

@@ -44,6 +44,7 @@ func  (httpd *Httpd)getErrorInfoHandler()(code int ,msg interface{}){
 	//zlib.MyPrint(string(msg))
 	return 200,res
 }
+//清除一条rule的所有数据，用于测试
 func  (httpd *Httpd)clearRuleByCodeHandler(postDataMap map[string]interface{})(code int ,msg interface{}){
 	httpd.Log.Info(" routing in clearRuleByCodeHandler : ")
 	if len(postDataMap) == 0{
@@ -81,7 +82,7 @@ func  (httpd *Httpd)clearRuleByCodeHandler(postDataMap map[string]interface{})(c
 		return errInfo.Code,errInfo.Msg
 	}
 
-	httpd.Gamematch.delOneRule(ruleId)
+	httpd.Gamematch.RuleConfig.delOne(ruleId)
 	return code,msg
 }
 
@@ -97,7 +98,11 @@ func  (httpd *Httpd)signHandler( postJsonStr string)(code int ,msg interface{}){
 	httpReqSign := HttpReqSign{}
 	err := json.Unmarshal([]byte(postJsonStr),&httpReqSign)
 	if err != nil{
-		zlib.ExitPrint("un json str err",err.Error())
+		errReplace := myerr.MakeOneStringReplace("httpReqSign")
+		errs := myerr.NewErrorCodeReplace(805,errReplace)
+		errInfo := zlib.ErrInfo{}
+		json.Unmarshal([]byte(errs.Error()),&errInfo)
+		return errInfo.Code,errInfo.Msg
 	}
 	newHttpReqSign,errs := httpd.Gamematch.CheckHttpSignData(httpReqSign)
 	//zlib.ExitPrint(httpReqSign)
@@ -136,12 +141,12 @@ func  (httpd *Httpd)signCancelHandler(postJsonStr string)(code int ,msg interfac
 	httpReqSignCancel := HttpReqSignCancel{}
 	err := json.Unmarshal([]byte(postJsonStr),&httpReqSignCancel)
 	if err != nil{
-		zlib.ExitPrint("un json str err",err.Error())
+		errReplace := myerr.MakeOneStringReplace("httpReqSignCancel")
+		errs := myerr.NewErrorCodeReplace(805,errReplace)
+		errInfo := zlib.ErrInfo{}
+		json.Unmarshal([]byte(errs.Error()),&errInfo)
+		return errInfo.Code,errInfo.Msg
 	}
-
-	//jsonDataMap := make(map[string]string)
-	//jsonDataMap["groupId"] = zlib.Float64ToString(postDataMap["groupId"].(float64),0)
-	//jsonDataMap["matchCode"] = postDataMap["matchCode"].(string)
 	data,errs := httpd.Gamematch.CheckHttpSignCancelData(httpReqSignCancel)
 	if errs != nil{
 		errInfo := zlib.ErrInfo{}

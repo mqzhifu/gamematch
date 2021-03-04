@@ -77,11 +77,9 @@ func (gamematch *Gamematch)CheckHttpSignData(httpReqSign HttpReqSign)(returnHttp
 	if err !=nil{
 		return returnHttpReqSign,err
 	}
-
-
 	////groupId := zlib.Atoi(groupIdStr.(string))
 	//groupId := int(groupIdStr.(float64))
-	if httpReqSign.GroupId == 0{
+	if httpReqSign.GroupId <= 0{
 		return returnHttpReqSign,myerr.NewErrorCode(452)
 	}
 	var playerListStruct []Player

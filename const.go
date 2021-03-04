@@ -100,9 +100,10 @@ const (
 
 //玩家状态
 const (
-	PlayerStatusNotExist = 1//redis中还没有该玩家信息
+	//PlayerStatusNotExist = 1//redis中还没有该玩家信息
 	PlayerStatusSign = 2	//已报名，等待匹配
 	PlayerStatusSuccess = 3	//匹配成功，等待拿走
+	PlayerStatusInit = 4	//初始化阶段
 )
 
 //HTTP推送

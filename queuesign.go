@@ -153,13 +153,16 @@ func (queueSign *QueueSign) cancelByGroupId(  groupId int ) error {
 		return myerr.NewErrorCodeReplace(750,msg)
 	}
 
-	for _,v := range group.Players{
-		playerElement := playerStatus.GetOne(v)
-		if playerElement.Status != PlayerStatusSign{
-			msg := make(map[int]string)
-			msg[0] = strconv.Itoa(playerElement.Status )
-			return myerr.NewErrorCodeReplace(623,msg)
+	for _,player := range group.Players{
+		playerElement,isEmpty := playerStatus.GetById(player.Id)
+		if isEmpty == 0{
+			if playerElement.Status != PlayerStatusSign{
+				msg := make(map[int]string)
+				msg[0] = strconv.Itoa(playerElement.Status )
+				return myerr.NewErrorCodeReplace(623,msg)
+			}
 		}
+
 	}
 
 	queueSign.delOneRuleOneGroup(groupId,1)

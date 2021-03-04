@@ -6,7 +6,90 @@ import (
 
 var AddRuleFlag = 0
 
+
+func tdefer(){
+	i := 1
+	defer zlib.MyPrint(i)
+	i++
+	return
+}
+
+func tfile(){
+	//实例化-<日志>-组件
+	logOption := zlib.LogOption{
+		OutFilePath : LOG_BASE_DIR,
+		OutFileName: "t1.log",
+		Level : LOG_LEVEL,
+		Target : LOG_TARGET,
+	}
+	mylog,_  := zlib.NewLog(logOption)
+
+
+	go func(){
+		for i:=0;i<10000;i++{
+			msg := "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+			mylog.Debug(msg)
+		}
+	}()
+
+	go func(){
+		for i:=0;i<10000;i++{
+			msg := "222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
+			mylog.Debug(msg)
+		}
+	}()
+
+	go func(){
+		for i:=0;i<10000;i++{
+			msg := "444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
+			mylog.Debug(msg)
+		}
+	}()
+
+	go func(){
+		for i:=0;i<10000;i++{
+			msg := "66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666"
+			mylog.Debug(msg)
+		}
+	}()
+
+	go func(){
+		for i:=0;i<10000;i++{
+			msg := "77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+			mylog.Debug(msg)
+		}
+	}()
+
+	go func(){
+		for i:=0;i<100000;i++{
+			msg := "888888888888888888888888888888888888888888888888888888888888"
+			mylog.Debug(msg)
+		}
+	}()
+
+
+
+	for i:=0;i<10000;i++{
+		msg := "333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
+		mylog.Debug(msg)
+	}
+
+
+	zlib.ExitPrint(-999)
+}
+
 func Test(){
+	tfile()
+	//tdefer()
+	//zlib.ExitPrint(1111)
+	/*待解决问题：
+		1:各协程之间是否需要加锁
+		2:groupId目前是使用外部的ID，是否考虑换成内部
+		3:查看当时进程有多少个协程，是否有metrics的方式，且最可以UI可视化
+		4:负载，如何在多台机器，各开一个守护进程~负载请求
+		5:pnic 异常机制处理
+		6:redis 连接池
+	*/
 	//实例化-<日志>-组件
 	logOption := zlib.LogOption{
 		OutFilePath : LOG_BASE_DIR,
@@ -53,14 +136,19 @@ func Test(){
 	//将自己注册成一个服务
 	myservice.RegOne(SERVICE_MATCH_NAME,myHost+":"+myPort)
 	//最后，终于，实例化：匹配机制
-	myGamematch,_ := NewGamematch(mylog,myredis,myservice,myetcd)
+
+	PidFilePath := "/tmp/gamematch.pid"
+	myGamematch,errs := NewGamematch(mylog,myredis,myservice,myetcd,PidFilePath)
+	if errs != nil{
+		zlib.ExitPrint("NewGamematch : ",errs.Error())
+	}
 	myHttpdOption :=  HttpdOption{
 		Host: myHost,
 		Port: myPort,
 		Log : mylog,
 	}
 	go myGamematch.startHttpd(myHttpdOption)
-	go myGamematch.DemonAll()
+	//go myGamematch.DemonAll()
 	deadLoopBlock(1 , " main ")
 
 	//TestAddRuleData(*myGamematch)

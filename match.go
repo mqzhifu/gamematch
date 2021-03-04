@@ -551,14 +551,19 @@ func (match *Match)successConditionAddOneGroup( resultId int,groupId int,teamId 
 
 	match.Log.Notice("delSingOldGroup",groupId)
 	match.QueueSign.delOneRuleOneGroup(groupId,0)
-	for _,v := range group.Players{
-		PlayerStatusElement := playerStatus.GetOne(v)
-
-		newPlayerStatusElement := PlayerStatusElement
+	for _,player := range group.Players{
+		playerStatusElement,isEmpty := playerStatus.GetById(player.Id)
+		var newPlayerStatusElement PlayerStatusElement
+		if isEmpty == 1{
+			newPlayerStatusElement = playerStatus.newPlayerStatusElement()
+		}else{
+			newPlayerStatusElement = playerStatusElement
+		}
 		newPlayerStatusElement.Status = PlayerStatusSuccess
 		newPlayerStatusElement.SuccessTimeout = group.SuccessTimeout
-		playerStatus.upInfo(PlayerStatusElement,newPlayerStatusElement)
-		match.Log.Info("playerStatus.upInfo ", "oldStatus : ",PlayerStatusElement.Status,"newStatus : ",newPlayerStatusElement.Status)
+
+		playerStatus.upInfo(playerStatusElement)
+		//match.Log.Info("playerStatus.upInfo ", "oldStatus : ",PlayerStatusElement.Status,"newStatus : ",newPlayerStatusElement.Status)
 	}
 	//zlib.MyPrint( "add one group : ")
 	//fmt.Printf("%+v",SuccessGroup)

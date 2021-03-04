@@ -1,6 +1,7 @@
 package gamematch
 
 import (
+	"errors"
 	"io"
 	"os"
 	"os/signal"
@@ -41,7 +42,7 @@ var myetcd		*zlib.MyEtcd
 
 var playerStatus 	*PlayerStatus	//玩家状态类
 
-func NewGamematch(zlog *zlib.Log  ,zredis *zlib.MyRedis,zservice *zlib.Service ,zetcd *zlib.MyEtcd )(gamematch *Gamematch ,errs error){
+func NewGamematch(zlog *zlib.Log  ,zredis *zlib.MyRedis,zservice *zlib.Service ,zetcd *zlib.MyEtcd,pidFilePath string )(gamematch *Gamematch ,errs error){
 	mylog = zlog
 	myredis = zredis
 	myservice = zservice
@@ -50,60 +51,67 @@ func NewGamematch(zlog *zlib.Log  ,zredis *zlib.MyRedis,zservice *zlib.Service ,
 	container := getErrorCode()
 	mylog.Info("getErrorCode len : ",len(container))
 	if   len(container) == 0{
-		//return gamematch,err.NewErrorCode(900)
-		zlib.ExitPrint("getErrorCode len  = 0")
+		return gamematch,errors.New("getErrorCode len  = 0")
 	}
 	//初始化-错误/异常 类
 	myerr = zlib.NewErr(mylog,container)
 	gamematch = new (Gamematch)
-	gamematch.PidFilePath = "/tmp/gamematch.pid"
-	gamematch.initPid()
+	if pidFilePath == ""{
+		return gamematch,myerr.NewErrorCode(501)
+	}
+	gamematch.PidFilePath = pidFilePath
+	err := gamematch.initPid()
+	if err != nil{
+		return gamematch,err
+	}
 
 	gamematch.RuleConfig, errs = NewRuleConfig(gamematch)
 	if errs != nil{
-		zlib.ExitPrint(" NewRuleConfig conn err.",errs.Error())
+		return gamematch,errs
+		//zlib.ExitPrint(" NewRuleConfig conn err.",errs.Error())
 	}
 
 	gamematch.containerPush		= make(map[int]*Push)
 	gamematch.containerSign 	= make(	map[int]*QueueSign )	//容器 报名类
 	gamematch.containerSuccess = make(	map[int]*QueueSuccess)
 	gamematch.containerMatch	= make( 	map[int]*Match)
-
-	//signSubMap := make()
+	//信号管道
 	gamematch.signalChan =  make( map[int]map[string] chan int )
 	mylog.Info("init container....")
 	//实例化容器
 	for _,rule := range gamematch.RuleConfig.getAll(){
 		gamematch.containerPush[rule.Id] = NewPush(rule,gamematch)
 		gamematch.containerSign[rule.Id] = NewQueueSign(rule,gamematch)
-		//gamematch.containerSuccess[rule.Id] = NewQueueSuccess(rule,gamematch.containerPush[rule.Id])
 		gamematch.containerSuccess[rule.Id] = NewQueueSuccess(rule,gamematch)
-		//gamematch.containerMatch[rule.Id] = NewMatch(rule,gamematch.containerSign[rule.Id],gamematch.containerSuccess[rule.Id],gamematch.containerPush[rule.Id])
 		gamematch.containerMatch[rule.Id] = NewMatch(rule,gamematch)
 	}
 	playerStatus = NewPlayerStatus()
 
 	gamematch.HttpdRuleState = make(map[int]int)
 	for ruleId ,_ := range gamematch.RuleConfig.getAll(){
-		gamematch.HttpdRuleState[ruleId] = 0
+		gamematch.HttpdRuleState[ruleId] = HTTPD_RULE_STATE_INIT
 	}
 
 	go gamematch.DemonSignal()
 	return gamematch,nil
 }
-func (gamematch *Gamematch)initPid(){
+func (gamematch *Gamematch)initPid()error{
 	pid := os.Getpid()
 	fd, err  := os.OpenFile(gamematch.PidFilePath, os.O_WRONLY | os.O_CREATE | os.O_TRUNC , 0777)
 	defer fd.Close()
 	if err != nil{
-		zlib.ExitPrint(" init log lib err ,  ",err.Error())
+		rrr := myerr.MakeOneStringReplace(gamematch.PidFilePath + " " + err.Error())
+		return myerr.NewErrorCodeReplace(502,rrr)
+		//zlib.ExitPrint(" init log lib err ,  ",err.Error())
 	}
 
 	_, err = io.WriteString(fd, strconv.Itoa(pid))
 	if err != nil{
-		mylog.Error("OutFile io.WriteString : ",err.Error())
+		rrr := myerr.MakeOneStringReplace(gamematch.PidFilePath + " " + err.Error())
+		return myerr.NewErrorCodeReplace(503,rrr)
 	}
 
+	return nil
 }
 func (gamematch *Gamematch)getContainerSignByRuleId(ruleId int)*QueueSign{
 	return gamematch.containerSign[ruleId]
@@ -129,11 +137,10 @@ func (gamematch *Gamematch) Sign(httpReqSign HttpReqSign )( signSuccessReturnDat
 		return signSuccessReturnData,myerr.NewErrorCode(400)
 	}
 	lenPlayers := len(httpReqSign.PlayerList)
-	//if lenPlayers == 0{
-	//	return myerr.NewErrorCode(401)
-	//}
+	if lenPlayers == 0{
+		return signSuccessReturnData,myerr.NewErrorCode(401)
+	}
 	queueSign := gamematch.getContainerSignByRuleId(ruleId)
-
 	//groupsTotal := queueSign.getAllGroupsWeightCnt()	//报名 小组总数
 	//playersTotal := queueSign.getAllPlayersCnt()	//报名 玩家总数
 	//mylog.Info(" action :  Sign , players : " + strconv.Itoa(lenPlayers) +" ,queue cnt : groupsTotal",groupsTotal ," , playersTotal",playersTotal)
@@ -143,48 +150,42 @@ func (gamematch *Gamematch) Sign(httpReqSign HttpReqSign )( signSuccessReturnDat
 
 	queueSign.Log.Info("start check player status :")
 	//检查，所有玩家的状态
-	playerStatusElementMap := make( map[int]PlayerStatusElement )
+	//playerStatusElementMap := make( map[int]PlayerStatusElement )
 	var  players []Player
 	for _,httpPlayer := range httpReqSign.PlayerList{
 		player := Player{Id: httpPlayer.Uid}
-		playerStatusElement := playerStatus.GetOne(player)
+		//playerStatusElement := playerStatus.GetOne(player)
+		playerStatusElement,isEmpty := playerStatus.GetById(player.Id)
+		//zlib.ExitPrint(playerStatusElement,isEmpty)
 		//fmt.Printf("playerStatus : %+v",playerStatusElement)
 		//zlib.MyPrint("k : ",k," , playerStatusElement GetOne: ",playerStatusElement)
 		queueSign.Log.Info("player ( ",player.Id , " ) statusElement :  status = ", playerStatusElement.Status)
-		if playerStatusElement.Status == PlayerStatusNotExist{
+		//if playerStatusElement.Status == PlayerStatusNotExist{
+		if isEmpty == 1{
 			//这是正常
 		}else if playerStatusElement.Status == PlayerStatusSuccess{
-			queueSign.Log.Error(" player status = PlayerStatusSuccess ,finish.")
+			queueSign.Log.Error(" player status = PlayerStatusSuccess ,demon not clean.")
 			msg := make(map[int]string)
 			msg[0] = strconv.Itoa(player.Id)
 			return signSuccessReturnData,myerr.NewErrorCodeReplace(403,msg)
 		}else if playerStatusElement.Status == PlayerStatusSign{
 			isTimeout := playerStatus.checkSignTimeout(rule,playerStatusElement)
 			if !isTimeout{//未超时
-				queueSign.Log.Error(" player status = matching...  not timeout")
+				//queueSign.Log.Error(" player status = matching...  not timeout")
 				msg := make(map[int]string)
 				msg[0] = strconv.Itoa(player.Id)
 				return signSuccessReturnData,myerr.NewErrorCodeReplace(402,msg)
-			}else{
-				queueSign.Log.Error(" player status is timeout ,but not clear , wait a moment!!!")
+			}else{//报名已超时，等待后台守护协程处理
+				//这里其实也可以先一步处理，但是怕与后台协程冲突
+				//queueSign.Log.Error(" player status is timeout ,but not clear , wait a moment!!!")
 				msg := make(map[int]string)
 				msg[0] = strconv.Itoa(player.Id)
-				return signSuccessReturnData,myerr.NewErrorCodeReplace(402,msg)
+				return signSuccessReturnData,myerr.NewErrorCodeReplace(407,msg)
 			}
-			//groupInfo := queueSign.getGroupElementById(playerStatusElement.GroupId)
-			//if groupInfo.Person > 1{
-			//	msg := make(map[int]string)
-			//	msg[0] = strconv.Itoa(player.Id)
-			//	return myerr.NewErrorCodeReplace(405,msg)
-			//}
-			//mylog.Notice("players sign timeout : delete one group... , gid : ",playerStatusElement.GroupId)
-			//queueSign.delOneRuleOneGroup(playerStatusElement.GroupId,1)
-			////删除一个组，会连带着组里所有玩家的状态信息也被删除，这里再重新拉取一下，保证数据完整性
-			//playerStatusElement = playerStatus.GetOne(player)
 		}
 
 		players  = append(players,player)
-		playerStatusElementMap[player.Id] = playerStatusElement
+		//playerStatusElementMap[player.Id] = playerStatusElement
 	}
 	mylog.Info("finish check player status.")
 	//先计算一下权重平均值
@@ -222,15 +223,15 @@ func (gamematch *Gamematch) Sign(httpReqSign HttpReqSign )( signSuccessReturnDat
 
 	playerIds := ""
 	for _,player := range players{
-		newPlayerStatusElement := playerStatusElementMap[player.Id]
+		newPlayerStatusElement := playerStatus.newPlayerStatusElement()
+		newPlayerStatusElement.PlayerId = player.Id
 		newPlayerStatusElement.Status = PlayerStatusSign
 		newPlayerStatusElement.RuleId = ruleId
 		newPlayerStatusElement.Weight = playerWeight
 		newPlayerStatusElement.SignTimeout = expire
 		newPlayerStatusElement.GroupId = group.Id
 
-		queueSign.Log.Info("upInfo status , old :",playerStatusElementMap[player.Id].Status ,  " , new : ",newPlayerStatusElement.Status )
-		playerStatus.upInfo( playerStatusElementMap[player.Id],newPlayerStatusElement)
+		playerStatus.upInfo(  newPlayerStatusElement)
 
 		playerIds += strconv.Itoa(player.Id) + ","
 	}
@@ -262,13 +263,34 @@ func (gamematch *Gamematch)countSignalChan(exceptRuleId int)int{
 }
 func  (gamematch *Gamematch)closeOneRuleDemonRoutine( ruleId int )int{
 	mylog.Info("closeOneRuleDemonRoutine ,ruleId :  ",ruleId , " start" )
+
+
+	_,ok := gamematch.HttpdRuleState[ruleId]
+	if !ok{
+		mylog.Error("closeOneRuleDemonRoutine ,gamematch.HttpdRuleState[ruleId]  is null ",ruleId)
+		return -1
+	}
+	mylog.Info("close httpd ,up state...")
+	gamematch.HttpdRuleState[ruleId] = HTTPD_RULE_STATE_CLOSE
+
+	_,ok = gamematch.RuleConfig.GetById(ruleId)
+	if !ok{
+		mylog.Error("closeOneRuleDemonRoutine ,ruleId not in db  ... ",ruleId)
+		return -1
+	}
+
+	_,ok = gamematch.signalChan[ruleId]
+	if !ok{
+		mylog.Error("closeOneRuleDemonRoutine ,gamematch.signalChan[ruleId]  is null ",ruleId)
+		return -2
+	}
+
 	for title,mychann := range gamematch.signalChan[ruleId]{
 		//mylog.Warning(SIGNAL_SEND_DESC  , ruleId,title )
 		//mychann <- SIGN_GOROUTINE_EXEC_EXIT
 		gamematch.signSend(mychann,SIGNAL_GOROUTINE_EXEC_EXIT,title)
 	}
-	mylog.Info("close httpd ,up state...")
-	gamematch.HttpdRuleState[ruleId] = HTTPD_RULE_STATE_CLOSE
+
 
 	closeRoutineCnt := 0
 	for{
@@ -285,6 +307,13 @@ func  (gamematch *Gamematch)closeOneRuleDemonRoutine( ruleId int )int{
 			}
 		}
 	}
+
+	for title,mychann := range gamematch.signalChan[ruleId]{
+		mylog.Warning("close mychann ,",ruleId,title)
+		close(mychann)
+	}
+	delete(gamematch.signalChan,ruleId)
+	mylog.Warning( "delete gamematch.signalChan map key :",ruleId)
 
 	mylog.Info("closeOneRuleDemonRoutine ,ruleId :  ",ruleId , " end" )
 	return closeRoutineCnt
@@ -303,8 +332,9 @@ func  (gamematch *Gamematch)closeDemonRoutine(  )int{
 	gamematch.signSend(httpdChan,SIGNAL_GOROUTINE_EXEC_EXIT,"httpd")
 	gamematch.signReceive(httpdChan,"httpd")
 
+	mylog.Notice("gamematch.signalChan len:",len(gamematch.signalChan))
 	for ruleId,_ := range gamematch.signalChan{
-		if ruleId == 0{
+		if ruleId == 0{//0是特殊管理，仅给HTTPD使用
 			continue
 		}
 		gamematch.closeOneRuleDemonRoutine(ruleId)
@@ -313,7 +343,8 @@ func  (gamematch *Gamematch)closeDemonRoutine(  )int{
 		//	chanLink <- SIGN_GOROUTINE_EXEC_EXIT
 		//}
 	}
-
+	mylog.Info("closeDemonRoutine : all routine quit success~~~")
+	return 1
 
 	//chanHasFinished := make(map[int] map[string]  int)
 	//chanHasFinishedCnt := 0
@@ -363,20 +394,22 @@ func  (gamematch *Gamematch)closeDemonRoutine(  )int{
 	//	//}
 	//	mySleepSecond(1,"closeDemonRoutine")
 	//}
-	mylog.Info("closeDemonRoutine : all routine quit success~~~")
-	return 1
+
 }
 //
 func(gamematch *Gamematch) quit(source int){
 	state := gamematch.closeDemonRoutine()
 	os.Exit(state)
 }
+//接收一个管道的数据-会阻塞
 func (gamematch *Gamematch)signReceive(mychan chan int,keyword string)int{
+	mylog.Warning("SIGNAL receive blocking.... ")
 	sign := <- mychan
 	mylog.Warning("SIGNAL receive: ",sign,getSignalDesc(sign),keyword)
 	return sign
 }
 func (gamematch *Gamematch)signSend(mychan chan int,data int,keyword string){
+	mylog.Warning("SIGNAL send blocking.... ")
 	mychan <- data
 	mylog.Warning("SIGNAL send: ",data,getSignalDesc(data),keyword)
 }
@@ -454,6 +487,9 @@ func (gamematch *Gamematch) DemonAll(){
 	}
 	//inc := 0
 	for _,rule := range queueList{
+		if rule.Id == 0{//0是特殊管理，仅给HTTPD使用
+			continue
+		}
 		gamematch.startOneRuleDomon(rule)
 		//inc++
 	}
@@ -489,18 +525,27 @@ func (gamematch *Gamematch) DemonAll(){
 func  (gamematch *Gamematch)startOneRuleDomon(rule Rule){
 	push := gamematch.getContainerPushByRuleId(rule.Id)
 	go gamematch.MyDemon(rule.Id,"push",push.Log,push.checkStatus)
-	//定时，检查，所有报名的组是否发生变化，将发生变化的组，删除掉
-	//queueSign := gamematch.getContainerSignByRuleId(rule.Id)
-	//go gamematch.MyDemon(queueSign.Log,"signTimeout",queueSign.CheckTimeout)
-	//queueSuccess := gamematch.getContainerSuccessByRuleId(rule.Id)
-	//go gamematch.MyDemon(queueSuccess.Log,"successTimeout",queueSuccess.CheckTimeout)
-	//match := gamematch.containerMatch[rule.Id]
-	//go gamematch.MyDemon(match.Log,"matching",match.start)
+	//报名超时
+	queueSign := gamematch.getContainerSignByRuleId(rule.Id)
+	go gamematch.MyDemon(rule.Id,"signTimeout",queueSign.Log,queueSign.CheckTimeout)
+	//报名成功，但3方迟迟推送失败，无人接收，超时
+	queueSuccess := gamematch.getContainerSuccessByRuleId(rule.Id)
+	go gamematch.MyDemon(rule.Id,"successTimeout",queueSuccess.Log,queueSuccess.CheckTimeout)
+	//匹配
+	match := gamematch.containerMatch[rule.Id]
+	go gamematch.MyDemon(rule.Id,"matching",match.Log,match.start)
+
+	mylog.Info("start httpd ,up state...")
+	gamematch.HttpdRuleState[rule.Id] = HTTPD_RULE_STATE_OK
 }
 
-func (gamematch *Gamematch) startHttpd(httpdOption HttpdOption){
-	httpd := NewHttpd(httpdOption,gamematch)
+func (gamematch *Gamematch) startHttpd(httpdOption HttpdOption)error{
+	httpd,err  := NewHttpd(httpdOption,gamematch)
+	if err != nil{
+		return err
+	}
 	httpd.Start()
+	return nil
 }
 //睡眠 - 协程
 func   mySleepSecond(second time.Duration , msg string){
@@ -519,18 +564,18 @@ func deadLoopBlock(sleepSecond time.Duration,msg string){
 	}
 }
 //实例化，一个LOG类，基于模块
-func getModuleLogInc( moduleName string)*zlib.Log{
+func getModuleLogInc( moduleName string)(newLog *zlib.Log ,err error){
 	logOption := zlib.LogOption{
 		OutFilePath : LOG_BASE_DIR ,
 		OutFileName: moduleName + ".log",
 		Level : LOG_LEVEL,
 		Target : 6,
 	}
-	newLog,err := zlib.NewLog(logOption)
+	newLog,err = zlib.NewLog(logOption)
 	if err != nil{
-		zlib.ExitPrint(err.Error())
+		return newLog,err
 	}
-	return newLog
+	return newLog,nil
 }
 //实例化，一个LOG类，基于RULE+模块
 func getRuleModuleLogInc(ruleCategory string,moduleName string)*zlib.Log{
@@ -559,7 +604,9 @@ func getRuleModuleLogInc(ruleCategory string,moduleName string)*zlib.Log{
 	}
 	return newLog
 }
-
+func (gamematch *Gamematch) DelOneRuleById(ruleId int){
+	gamematch.RuleConfig.delOne(ruleId)
+}
 
 //删除全部数据
 func (gamematch *Gamematch) DelAll(){
