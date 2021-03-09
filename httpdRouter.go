@@ -98,7 +98,7 @@ func  (httpd *Httpd)signHandler( postJsonStr string)(code int ,msg interface{}){
 	httpReqSign := HttpReqSign{}
 	err := json.Unmarshal([]byte(postJsonStr),&httpReqSign)
 	if err != nil{
-		errReplace := myerr.MakeOneStringReplace("httpReqSign")
+		errReplace := myerr.MakeOneStringReplace("httpReqSign : "+ err.Error())
 		errs := myerr.NewErrorCodeReplace(805,errReplace)
 		errInfo := zlib.ErrInfo{}
 		json.Unmarshal([]byte(errs.Error()),&errInfo)
@@ -115,7 +115,7 @@ func  (httpd *Httpd)signHandler( postJsonStr string)(code int ,msg interface{}){
 	_,err  = httpd.checkHttpdState(newHttpReqSign.RuleId)
 	if err != nil{
 		errInfo := zlib.ErrInfo{}
-		json.Unmarshal([]byte(errs.Error()),&errInfo)
+		json.Unmarshal([]byte(err.Error()),&errInfo)
 
 		return errInfo.Code,errInfo.Msg
 	}

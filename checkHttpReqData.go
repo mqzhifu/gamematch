@@ -1,40 +1,5 @@
 package gamematch
 
-//func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
-//matchCode,ok := jsonDataMap["matchCode"]
-//if !ok {
-//	return data,myerr.NewErrorCode(450)
-//}
-//if matchCode == ""{
-//	return data,myerr.NewErrorCode(450)
-//}
-//
-//checkCodeRs := false
-//ruleId := 0
-//for _,rule := range gamematch.RuleConfig.getAll(){
-//	if  rule.CategoryKey == matchCode{
-//		ruleId = rule.Id
-//		checkCodeRs = true
-//		break
-//	}
-//}
-//if !checkCodeRs{
-//	return data,myerr.NewErrorCode(451)
-//}
-//
-//playerId,ok := jsonDataMap["playerId"]
-//if !ok {
-//	return data,myerr.NewErrorCode(452)
-//}
-//if playerId == ""{
-//	return data,myerr.NewErrorCode(452)
-//}
-//
-//data.PlayerId =  zlib.Atoi(playerId)
-//data.RuleId = ruleId
-//	return data,nil
-//}
-
 func (gamematch *Gamematch)CheckHttpSignCancelData(httpReqSignCancel HttpReqSignCancel)(data HttpReqSignCancel,errs error){
 	//matchCode,ok := jsonDataMap["matchCode"]
 	//if !ok {
@@ -180,5 +145,39 @@ func (gamematch *Gamematch)CheckHttpSignData(httpReqSign HttpReqSign)(returnHttp
 //	data.CustomProp = customProp
 //	data.RuleId = ruleId
 //	data.Addition = addition
+//	return data,nil
+//}
+//func (gamematch *Gamematch)CheckHttpRuleAddOneData(jsonDataMap map[string]string)(data SignCancelHttpData,errs error){
+//matchCode,ok := jsonDataMap["matchCode"]
+//if !ok {
+//	return data,myerr.NewErrorCode(450)
+//}
+//if matchCode == ""{
+//	return data,myerr.NewErrorCode(450)
+//}
+//
+//checkCodeRs := false
+//ruleId := 0
+//for _,rule := range gamematch.RuleConfig.getAll(){
+//	if  rule.CategoryKey == matchCode{
+//		ruleId = rule.Id
+//		checkCodeRs = true
+//		break
+//	}
+//}
+//if !checkCodeRs{
+//	return data,myerr.NewErrorCode(451)
+//}
+//
+//playerId,ok := jsonDataMap["playerId"]
+//if !ok {
+//	return data,myerr.NewErrorCode(452)
+//}
+//if playerId == ""{
+//	return data,myerr.NewErrorCode(452)
+//}
+//
+//data.PlayerId =  zlib.Atoi(playerId)
+//data.RuleId = ruleId
 //	return data,nil
 //}

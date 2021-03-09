@@ -12,12 +12,12 @@ type HttpReqSign struct {
 
 type HttpReqPlayer struct {
 	Uid 		int		`json:"uid"`
-	MatchAttr	HttpReqPlayerAttr	`json:"matchAttr"`
+	MatchAttr	map[string]int	`json:"matchAttr"`
 }
 
-type HttpReqPlayerAttr struct {
-
-}
+//type HttpReqPlayerAttr struct {
+//
+//}
 
 type HttpReqSignCancel struct {
 	PlayerId	int

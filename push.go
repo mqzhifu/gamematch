@@ -286,23 +286,24 @@ func  (push *Push)pushAndUpInfo(element PushElement,upStatus int){
 	thirdMethodUri := ""
 	postData := getAnyType()
 	//thirdMethodPostData := interface{}
+	payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
 	if element.Category == PushCategorySignTimeout  {
 		push.Log.Debug("element.Category == PushCategorySignTimeout")
-		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		//payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
 		postData = GroupStrToStruct(payload)
 
 		thirdMethodUri = "v1/match/error"
 		//httpRs,err = myservice.HttpPost(SERVICE_MSG_SERVER,"v1/match/error",myGroup)
 	}else if element.Category == PushCategorySuccessTimeout {
 		push.Log.Debug("element.Category == PushCategorySuccessTimeout")
-		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		//payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
 		//zlib.MyPrint(payload)
 		postData = push.QueueSuccess.strToStruct(payload)
 		thirdMethodUri = "v1/match/error"
 		//httpRs,err = myservice.HttpPost(SERVICE_MSG_SERVER,"v1/match/error",myResult)
 	}else if element.Category == PushCategorySuccess{
 		push.Log.Debug("element.Category == PushCategorySuccess")
-		payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
+		//payload := strings.Replace(element.Payload,PayloadSeparation,separation,-1)
 		thisResult := push.QueueSuccess.strToStruct (payload)
 		postData = push.QueueSuccess.GetResultById(thisResult.Id,1,0)
 		//fmt.Printf("postData : %+v",postData)

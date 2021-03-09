@@ -61,10 +61,10 @@ func NewHttpd(httpdOption HttpdOption,gamematch *Gamematch)(httpd  *Httpd,err er
 //开启HTTP监听
 func (httpd *Httpd)Start()error{
 	httpd.StartHttpLisnten()
-	////将所有rule的HTTPD请求状态都打开，允许外面访问
-	//for k,_:=range httpd.Gamematch.HttpdRuleState{
-	//	httpd.Gamematch.HttpdRuleState[k] = HTTPD_RULE_STATE_OK
-	//}
+	//将所有rule的HTTPD请求状态都打开，允许外面访问
+	for k,_:=range httpd.Gamematch.HttpdRuleState{
+		httpd.Gamematch.HttpdRuleState[k] = HTTPD_RULE_STATE_OK
+	}
 	//获取一个管道，用于接收停止信号
 	myChan := httpd.Gamematch.getNewSignalChan(0,"httpd")
 	//阻塞，等待接收信号

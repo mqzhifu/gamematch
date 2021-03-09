@@ -25,11 +25,12 @@ type Rule struct {
 }
 
 type PlayerWeight struct {
-	ScoreMin 	int		//权重值范围：最小值，范围： 1-10
-	ScoreMax	int		//权重值范围：最大值，范围： 1-10
+	ScoreMin 	int		//权重值范围：最小值，范围： 1-100
+	ScoreMax	int		//权重值范围：最大值，范围： 1-100
 	AutoAssign	bool	//当权重值范围内，没有任何玩家，是否接收，自动调度分配，这样能提高匹配成功率
 	Formula		string	//属性计算公式，由玩家的N个属性，占比，最终计算出权重值
-	Flag		int		//1、计算权重平均的区间的玩家，2、权重越高的匹配越快
+	Aggregation string  //sum average min max
+	//Flag		int		//1、计算权重平均的区间的玩家，2、权重越高的匹配越快
 }
 
 type GamesMatchConfig struct {
@@ -40,7 +41,7 @@ type GamesMatchConfig struct {
 	MatchCode  string `json:"match_code"`  //匹配代码
 	TeamType   int    `json:"team_type"`   //团队类型 1各自为战 2对称团队战
 	MaxPlayers int    `json:"max_players"` //匹配最大人数 如团队战代表每个队伍人数
-	Rule       string `json:"rule"`        //表达式匹配规则
+	Rule       PlayerWeight `json:"rule"`        //表达式匹配规则
 	Timeout    int    `json:"timeout"`     //匹配超时时间
 	Fps        int    `json:"fps"`         //帧率
 	SuccessTimeout int `json:"success_timeout"`
@@ -167,18 +168,20 @@ func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,
 	}
 	//zlib.MyPrint(v)
 	gamesMatchConfig := GamesMatchConfig{}
+	//zlib.MyPrint("parseOneConfigByEtcd",k,v)
 	err = json.Unmarshal( []byte(v), & gamesMatchConfig)
 	if err != nil{
-		msg := myerr.MakeOneStringReplace(err.Error())
+		msg := myerr.MakeOneStringReplace("ruleCategory : " +rule.CategoryKey  + err.Error())
 		myerr.NewErrorCodeReplace(622,msg)
 		return rule,err
 	}
+
 
 	if gamesMatchConfig.Status != RuleStatusOnline{
 		return rule,myerr.NewErrorCode(624)
 	}
 
-	playerWeightRow := PlayerWeight{}
+	//playerWeightRow := PlayerWeight{}
 	rule  = Rule{
 		Id: gamesMatchConfig.Id,
 		AppId: gamesMatchConfig.Id,
@@ -191,14 +194,15 @@ func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,
 		TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
 		PersonCondition: gamesMatchConfig.MaxPlayers,
 		GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
-		PlayerWeight: playerWeightRow,
+		PlayerWeight: gamesMatchConfig.Rule,
 	}
-
+	//zlib.MyPrint("parseOneConfigByEtcd:",gamesMatchConfig)
 	return rule,err
 }
 
 func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 	etcdRuleList := myetcd.GetListByPrefix(RuleEtcdConfigPrefix)
+	//zlib.MyPrint("getByEtcd",etcdRuleList)
 	ruleList := make(map[int]Rule)
 	if len(etcdRuleList) == 0{
 		return ruleList
@@ -219,6 +223,7 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 		////zlib.MyPrint(v)
 		//gamesMatchConfig := GamesMatchConfig{}
 		//err := json.Unmarshal( []byte(v), & gamesMatchConfig)
+		//println("%+v",v)
 		ruleRow,err := ruleConfig.parseOneConfigByEtcd(k,v)
 		if err != nil{
 			//msg := myerr.MakeOneStringReplace(err.Error())
@@ -246,9 +251,11 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 		_,err =  ruleConfig.CheckRuleByElement(ruleRow)
 		//zlib.ExitPrint(err)
 		if err != nil{
+			mylog.Notice("CheckRuleByElement err :",err.Error())
 			//myerr.NewErrorCode(621)
 			continue
 		}
+		//zlib.MyPrint("ruleRow",ruleRow)
 		ruleList[ruleRow.Id] = ruleRow
 		//i++
 	}
@@ -402,6 +409,12 @@ func (ruleConfig *RuleConfig) CheckRuleByElement(rule Rule)(bool,error){
 
 	if rule.GroupPersonMax > RuleGroupPersonMax{
 		return false,myerr.NewErrorCodeReplace(615,myerr.MakeOneStringReplace(strconv.Itoa(RuleGroupPersonMax)))
+	}
+
+	if rule.PlayerWeight.Formula != ""{
+		if rule.PlayerWeight.ScoreMin > rule.PlayerWeight.ScoreMax{
+			return false,myerr.NewErrorCode(617)
+		}
 	}
 
 	//PlayerWeight	PlayerWeight	//权重，目前是以最小单位：玩家属性，如果是小组/团队，是计算平均值

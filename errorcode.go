@@ -32,7 +32,6 @@ func getErrorCode() (container []string) {
 	container = append(container, "457, player id is null or group id is null,error,某个玩家ID为空")
 	container = append(container, "458,oldPlayerStatusElement == newPlayerStatusElement,error,更新玩家信息出错，新值与旧值相同")
 
-
 	//gamematch 类想着
 	container = append(container, "500,getErrorCode list is empty ,error,错误描述文件列表为空")
 	container = append(container, "501,pidFilePath is empty,error,进程ID保存文件位置为空")
@@ -62,6 +61,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "614,GroupPersonMax <= 0,error,GroupPersonMax")
 	container = append(container, "615,GroupPersonMax > {0},error,GroupPersonMax")
 	container = append(container, "616,CategoryKey is empty,error,CategoryKey为空")
+	container = append(container, "617,PlayerWeight.ScoreMin > rule.PlayerWeight.ScoreMax,")
 
 	container = append(container, "620, etcd rule matchCode is empty ,error, ")
 	container = append(container, "621, etcd rule value is empty,error, ")

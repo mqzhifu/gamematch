@@ -1,7 +1,28 @@
 package gamematch
 
-import "zlib"
+//公共
+const (
+	ENV_DEV					= "dev"//开发环境
+	ENV_TEST				= "test"//测试环境
+	ENV_PRE					= "pre"//预发布环境
+	ENV_ONLINE				= "online"//线上环境
+	ENV						= ENV_DEV
 
+	//LOG_BASE_DIR 			= "/data/www/golang/src/logs"
+	//LOG_FILE_NAME			= "gamematch"
+	//LOG_LEVEL				= zlib.LEVEL_ALL
+	//LOG_TARGET 				= 7
+
+	separation 				= "#"		//redis 内容-字符串分隔符
+	PayloadSeparation		= "%"		//push时的内容，缓存进redis时
+	redisSeparation 		= "_"		//redis key 分隔符
+	IdsSeparation 			= ","		//多个ID 分隔符
+	redisPrefix 			= "match"	//整个服务的，redis 前缀
+	PlayerMatchingMaxTimes 	= 3			//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
+
+	FormulaFirst			= "<"
+	FormulaEnd				= ">"
+)
 /*
 	匹配类型 - 规则
 	1. N人匹配 ，只要满足N人，即成功
@@ -27,8 +48,18 @@ const(
 	RuleEtcdConfigPrefix = "/v1/conf/matches/"	//etcd中  ， 存放 rule  集合的前缀
 
 	RuleStatusOnline  = 1
-	RuleStatusOffline = 1
-	RuleStatusDelete  = 1
+	RuleStatusOffline = 2
+	RuleStatusDelete  = 3
+
+	WeightMaxValue 		= 100
+)
+
+//微服务
+const(
+	SERVICE_PREFIX = "/v1/service"		//微服务前缀
+
+	SERVICE_MSG_SERVER		="msgServer"
+	SERVICE_MATCH_NAME		="gamematch"
 )
 
 const (
@@ -66,36 +97,12 @@ const(
 	HTTPD_RULE_STATE_CLOSE = 3
 	HTTPD_RULE_STATE_UKNOW = 4
 )
-
-
-
-//微服务
-const(
-	SERVICE_PREFIX = "/v1/service"		//微服务前缀
-
-	SERVICE_MSG_SERVER		="msgServer"
-	SERVICE_MATCH_NAME		="gamematch"
-)
-//公共
-const (
-	LOG_BASE_DIR 			= "/data/www/golang/src/logs"
-	LOG_FILE_NAME			= "gamematch"
-	LOG_LEVEL				= zlib.LEVEL_ALL
-	LOG_TARGET 				= 7
-
-	separation 				= "#"		//redis 内容-字符串分隔符
-	PayloadSeparation		= "%"		//push时的内容，缓存进redis时
-	redisSeparation 		= "_"		//redis key 分隔符
-	IdsSeparation 			= ","		//多个ID 分隔符
-	redisPrefix 			= "match"	//整个服务的，redis 前缀
-	PlayerMatchingMaxTimes 	= 3			//一个玩家，参与匹配机制的最大次数，超过这个次数，证明不用再匹配了，目前没用上，目前使用的还是绝对的超时时间为准
-
-)
 //匹配-筛选策略
 const (
 	FilterFlagAll     =1	//全匹配
 	FilterFlagBlock	  =2	//块-匹配
-	FilterFlagBlockInc=3	//递增块切尔西
+	FilterFlagBlockInc=3	//递增块匹配
+	FilterFlagDIY	  =4	//自定义块匹配
 )
 
 //玩家状态
@@ -105,7 +112,6 @@ const (
 	PlayerStatusSuccess = 3	//匹配成功，等待拿走
 	PlayerStatusInit = 4	//初始化阶段
 )
-
 //HTTP推送
 const(
 	PushCategorySignTimeout 	= 1	//报名超时

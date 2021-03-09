@@ -7,81 +7,7 @@ import (
 var AddRuleFlag = 0
 
 
-func tdefer(){
-	i := 1
-	defer zlib.MyPrint(i)
-	i++
-	return
-}
-
-func tfile(){
-	//实例化-<日志>-组件
-	logOption := zlib.LogOption{
-		OutFilePath : LOG_BASE_DIR,
-		OutFileName: "t1.log",
-		Level : LOG_LEVEL,
-		Target : LOG_TARGET,
-	}
-	mylog,_  := zlib.NewLog(logOption)
-
-
-	go func(){
-		for i:=0;i<10000;i++{
-			msg := "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
-			mylog.Debug(msg)
-		}
-	}()
-
-	go func(){
-		for i:=0;i<10000;i++{
-			msg := "222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
-			mylog.Debug(msg)
-		}
-	}()
-
-	go func(){
-		for i:=0;i<10000;i++{
-			msg := "444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444"
-			mylog.Debug(msg)
-		}
-	}()
-
-	go func(){
-		for i:=0;i<10000;i++{
-			msg := "66666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666666"
-			mylog.Debug(msg)
-		}
-	}()
-
-	go func(){
-		for i:=0;i<10000;i++{
-			msg := "77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
-			mylog.Debug(msg)
-		}
-	}()
-
-	go func(){
-		for i:=0;i<100000;i++{
-			msg := "888888888888888888888888888888888888888888888888888888888888"
-			mylog.Debug(msg)
-		}
-	}()
-
-
-
-	for i:=0;i<10000;i++{
-		msg := "333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333"
-		mylog.Debug(msg)
-	}
-
-
-	zlib.ExitPrint(-999)
-}
-
 func Test(){
-	tfile()
-	//tdefer()
-	//zlib.ExitPrint(1111)
 	/*待解决问题：
 		1:各协程之间是否需要加锁
 		2:groupId目前是使用外部的ID，是否考虑换成内部
@@ -89,37 +15,44 @@ func Test(){
 		4:负载，如何在多台机器，各开一个守护进程~负载请求
 		5:pnic 异常机制处理
 		6:redis 连接池
+		7:权重
+		8:服务注册自己，还是静态的，要改成动态注册+时间周期
 	*/
-	//实例化-<日志>-组件
-	logOption := zlib.LogOption{
-		OutFilePath : LOG_BASE_DIR,
-		OutFileName: LOG_FILE_NAME,
-		Level : LOG_LEVEL,
-		Target : LOG_TARGET,
-	}
-	mylog,errs  := zlib.NewLog(logOption)
-	if errs != nil{
-		zlib.ExitPrint("new log err",errs.Error())
-	}
-	//实例化-<redis>-组件
-	redisOption := zlib.RedisOption{
-		Host: "127.0.0.1",
-		Port: "6379",
-		Log: mylog,
-	}
-	myredis , errs := zlib.NewRedisConnPool(redisOption)
-	if errs != nil{
-		zlib.ExitPrint("new redis err",errs.Error())
-	}
+
 	//实例化-<etcd>-组件
 	url := "http://39.106.65.76:1234/system/etcd/cluster1/list/"
 	etcdOption := zlib.EtcdOption{
 		FindEtcdUrl: url,
 		Log : mylog,
+		AppName: SERVICE_MATCH_NAME,
+		AppENV : ENV,
 	}
 	myetcd,errs := zlib.NewMyEtcdSdk(etcdOption)
 	if errs != nil{
 		zlib.ExitPrint("NewMyEtcdSdk err",errs.Error())
+	}
+	//实例化-<日志>-组件
+	logOption := zlib.LogOption{
+		OutFilePath : myetcd.GetAppConfByKey("log_base_path"),
+		OutFileName: "gamematch",
+		Level : zlib.Atoi(myetcd.GetAppConfByKey("log_level")),
+		Target : zlib.Atoi(myetcd.GetAppConfByKey("log_target")),
+	}
+	mylog,errs  := zlib.NewLog(logOption)
+	if errs != nil{
+		zlib.ExitPrint("new log err",errs.Error())
+	}
+	myetcd.SetLog(mylog)
+	//实例化-<redis>-组件
+	redisOption := zlib.RedisOption{
+		Host: myetcd.GetAppConfByKey("redis_host"),
+		Port: myetcd.GetAppConfByKey("redis_port"),
+		Log: mylog,
+	}
+
+	myredis , errs := zlib.NewRedisConnPool(redisOption)
+	if errs != nil{
+		zlib.ExitPrint("new redis err",errs.Error())
 	}
 	//实例化-<服务发现>-组件
 	serviceOption := zlib.ServiceOption{
@@ -127,28 +60,32 @@ func Test(){
 		Log: mylog,
 		Prefix: SERVICE_PREFIX,
 	}
-
-	myHost := "192.168.31.148"
+	localIp,err := zlib.GetLocalIp()
+	if err !=nil{
+		zlib.ExitPrint("GetLocalIp err : ",err)
+	}
+	myHost := localIp
+	//myHost := "192.168.31.148"
 	//myHost := "192.168.192.170"
-	myPort := "5678"
+	myPort := myetcd.GetAppConfByKey("reg_self_port")
 
 	myservice := zlib.NewService(serviceOption)
 	//将自己注册成一个服务
 	myservice.RegOne(SERVICE_MATCH_NAME,myHost+":"+myPort)
 	//最后，终于，实例化：匹配机制
 
-	PidFilePath := "/tmp/gamematch.pid"
+	PidFilePath :=  myetcd.GetAppConfByKey("pid_file_path")
 	myGamematch,errs := NewGamematch(mylog,myredis,myservice,myetcd,PidFilePath)
 	if errs != nil{
 		zlib.ExitPrint("NewGamematch : ",errs.Error())
 	}
-	myHttpdOption :=  HttpdOption{
-		Host: myHost,
-		Port: myPort,
-		Log : mylog,
-	}
-	go myGamematch.startHttpd(myHttpdOption)
-	//go myGamematch.DemonAll()
+	//myHttpdOption :=  HttpdOption{
+	//	Host: myHost,
+	//	Port: myPort,
+	//	Log : mylog,
+	//}
+	//go myGamematch.startHttpd(myHttpdOption)
+	go myGamematch.DemonAll()
 	deadLoopBlock(1 , " main ")
 
 	//TestAddRuleData(*myGamematch)
@@ -179,7 +116,7 @@ func TestAddRuleData(myGamematch Gamematch){
 			ScoreMax:-1,
 			AutoAssign:true,
 			Formula:"",
-			Flag:1,
+			//Flag:1,
 		},
 	}
 
@@ -200,7 +137,7 @@ func TestAddRuleData(myGamematch Gamematch){
 			ScoreMax:-1,
 			AutoAssign:true,
 			Formula:"",
-			Flag:1,
+			//Flag:1,
 		},
 	}
 

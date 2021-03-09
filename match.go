@@ -33,16 +33,17 @@ func NewMatch(rule Rule , gamematch *Gamematch)*Match{
 	return match
 }
 //一条rule 的匹配
-func (match *Match) start(){
-	mylog.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
+//func (match *Match) start(){
+//	mylog.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
 	//for{
-	 	match.matching()
+	// 	match.matching()
 	 	//match.Log.Info("sleep 1")
 		//mySleepSecond(1, "  matching start ")
 	//}
-}
+//}
 //一次完整的匹配大流程
 func  (match *Match)  matching() {
+	mylog.Info("start one rule matching , ruleId :  ",match.Rule.Id, " category :" ,match.Rule.CategoryKey)
 	playersTotal := match.QueueSign.getAllPlayersCnt()
 	groupsTotal := match.QueueSign.getAllGroupsWeightCnt()
 	mylog.Info("new once matching func , playersTotal total:",playersTotal , " groupsTotal : ",groupsTotal)
@@ -54,21 +55,64 @@ func  (match *Match)  matching() {
 		match.Log.Info(" first total is empty ")
 		return
 	}
-	//gamematch.getLock()
-	//defer gamematch.unLock()
+	//设置了匹配权重公式
+	if match.Rule.PlayerWeight.Formula != "" && match.Rule.PlayerWeight.ScoreMax > match.Rule.PlayerWeight.ScoreMin{
+		dead  := 0
+		//两个<极值>的距离
+		distance := match.Rule.PlayerWeight.ScoreMax - match.Rule.PlayerWeight.ScoreMin
+		//这里，比较好的循环值应该是0-100，保证每走向前走一步，上下值的范围都能获取全了
+		//但是，这样有点浪费，步长设置成  上面的距离值，更快一些
+		for i:=0;i<WeightMaxValue;i=i+distance{
+			start := i - match.Rule.PlayerWeight.ScoreMin
+			if start < 0 {
+				start = 0
+			}
 
-	//先做最大范围搜索：也就是整体看下集合全部元素
-	matchingRange := []int{FilterFlagAll,FilterFlagBlock,FilterFlagBlockInc}
-	for i:=0;i<len(matchingRange);i++{
-		groupIds,isEmpty := match.matchingRange(matchingRange[i])
-		if isEmpty == 1{
-			mylog.Notice("signed players is empty ")
-			return
+			end := i+ match.Rule.PlayerWeight.ScoreMax
+			if end > WeightMaxValue{
+				end = WeightMaxValue
+				dead = 1
+			}
+
+			if dead == 1{
+				break
+			}
+			tmpMax := float32(end)
+			rangeStart := strconv.Itoa(start)
+			rangeEnd := zlib.FloatToString(tmpMax,3)
+
+			//zlib.MyPrint(rangeStart,rangeEnd)
+			match.setMemberRange(rangeStart,rangeEnd)
+			successGroupIds,isEmpty := match.searchByRange(FilterFlagDIY)
+			mylog.Info("searchByRange rs : ",rangeStart , " ~ ",rangeStart , " , rs , cnt:",len(successGroupIds) , "isEmpty : ",isEmpty)
+			match.Log.Info("searchByRange rs : ",rangeStart , " ~ ",rangeStart , " , rs , cnt:",len(successGroupIds) , "isEmpty : ",isEmpty)
+
+			match.Log.Debug("searchByRange rs : ",successGroupIds)
+			if isEmpty == 1 {
+				continue
+			}
+			//mylog.Debug("successGroupIds",successGroupIds)
+			match.Log.Info("successGroupIds",successGroupIds)
+			//将计算好的组ID，团队，插入到 成功 队列中
+			if len(successGroupIds)> 0 {
+				match.successConditions( successGroupIds)
+			}
 		}
-		if matchingRange[i] == FilterFlagAll{
-			if len(groupIds) >0 {
-				mylog.Info("FilterFlagAll hit...")
+		//zlib.ExitPrint(11111)
+	}else{
+		//先做最大范围搜索：也就是整体看下集合全部元素
+		matchingRange := []int{FilterFlagAll,FilterFlagBlock,FilterFlagBlockInc}
+		for i:=0;i<len(matchingRange);i++{
+			groupIds,isEmpty := match.matchingRange(matchingRange[i])
+			if isEmpty == 1{
+				mylog.Notice("signed players is empty ")
 				return
+			}
+			if matchingRange[i] == FilterFlagAll{
+				if len(groupIds) >0 {
+					mylog.Info("FilterFlagAll hit...")
+					return
+				}
 			}
 		}
 	}
@@ -113,14 +157,14 @@ func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]in
 	rangeStart := ""
 	rangeEnd := ""
 	forStart := 0
-	forEnd := 10
+	forEnd := WeightMaxValue
 	if flag == FilterFlagAll{
 		forEnd = 1
 	}
 	for i:=forStart;i<forEnd;i++{
 		if flag == FilterFlagBlock{//区域性的
 			tmpMin = i
-			tmpMax = float32(i) + 0.9999
+			tmpMax = float32(i) * 10 + 0.9999
 
 			rangeStart = strconv.Itoa(tmpMin)
 			rangeEnd = zlib.FloatToString(tmpMax,3)
@@ -137,7 +181,7 @@ func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]in
 				continue
 			}
 			tmpMin = 0
-			tmpMax = float32(i) + 0.9999
+			tmpMax = float32(i) * 10 + 0.9999
 
 			rangeStart = strconv.Itoa(tmpMin)
 			rangeEnd = zlib.FloatToString(tmpMax,3)
@@ -232,6 +276,7 @@ func   (match *Match) searchFilterDetail(  )(defaultSuccessGroupIds map[int]map[
 		*/
 		match.logarithmic( successGroupIds)
 	}
+	//注： 上面一但执行，虽然还是查询操作且主要是查询索引，但真实索引值已经出队列了，如果后面操作失败，要把索引补全，不然数据缺失
 	match.groupPersonCalculateNumberCombination( successGroupIds)
 	//因用的是map ,预先make 下，地址就已经分配了，可能有时，其实一个值都没有用到，但是len 依然是 > 0
 	if zlib.CheckMap2IntIsEmpty(successGroupIds)  {
@@ -253,6 +298,7 @@ func   (match *Match) searchFilterDetail(  )(defaultSuccessGroupIds map[int]map[
 
 	return successGroupIds
 }
+//小组人数计算  数字组合方式
 func   (match *Match) groupPersonCalculateNumberCombination( successGroupIds map[int]map[int]int){
 	//这里吧，按说取，一条rule最大的值就行，没必要取全局最大的5，但是吧，后面的算法有点LOW，外层循环数就是5 ，除了矩阵，太麻烦，回头我再想想
 	groupPersonNum := match.QueueSign.getPlayersCntByWeight(match.rangeStart,match.rangeEnd)
