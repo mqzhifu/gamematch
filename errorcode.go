@@ -21,6 +21,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "405,sign err Status:PlayerStatusSign id:{0} but timeout and group person > 1 ,error,玩家状态为报名中，且已失效，等待后台任务回收，并且该玩家所有组的人数大于1")
 	container = append(container, "406,players is timeout : 0,error,报名的玩家数为空")
 	container = append(container, "407,sign err Status:PlayerStatusSign timeout  id:{0} ,error,玩家状态：~不能重复报名，已超时,等待后台协程回收或者可以取消报名")
+	container = append(container, "408,sign err :player len  > rule.max person id:{0},rule规定是N人，报名的小组人数大于此数")
 
 	container = append(container, "450,matchCode is null,error,matchCode为空")
 	container = append(container, "451,matchCode not exist in db,error,matchCode在DB中找不见")
@@ -68,7 +69,7 @@ func getErrorCode() (container []string) {
 	container = append(container, "622, etcd rule json.Unmarshal err {0},error, ")
 	container = append(container, "623, playerStatus not equal Sign {0},error, ")
 	container = append(container, "624, etcd rule status != online ,error, ")
-
+	container = append(container, "625, rule config is null ,error,从etcd里可以读到ruleList ，但是用户监听的ruleId list 对不上 ")
 	//push相关
 	container = append(container, "700, push respone code err {0},error, ")
 	//group相关

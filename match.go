@@ -1,6 +1,7 @@
 package gamematch
 
 import (
+	"github.com/gomodule/redigo/redis"
 	"zlib"
 	"strconv"
 	"sync"
@@ -204,6 +205,7 @@ func  (match *Match)  matchingRange(flag int)(successGroupIds map[int]map[int]in
 		match.Log.Info("successGroupIds",successGroupIds)
 		//将计算好的组ID，团队，插入到 成功 队列中
 		if len(successGroupIds)> 0 {
+			match.Log.Info("has success len : ",len(successGroupIds), "  and start insert : ")
 			match.successConditions( successGroupIds)
 			if flag == FilterFlagAll{
 				//如果最大范围的匹配命中了数据，就证明，只有在最大范围才有数据，再细化的范围搜索已无用
@@ -481,10 +483,14 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 	length := len(successGroupIds)
 	mylog.Info("successConditions  ...   len :   ",length)
 	match.Log.Info("successConditions  ...   len :   ",length)
+	redisConnFD := myredis.GetNewConnFromPool()
+	defer redisConnFD.Close()
+
 	if match.Rule.Flag == RuleFlagCollectPerson{//满足人数即开团
 		match.Log.Debug("case : RuleFlagCollectPerson")
 		//zlib.MyPrint("successGroupIds",successGroupIds)
 		for _,oneCondition:=range successGroupIds{
+			myredis.Multi(redisConnFD )
 			match.Log.Info("oneCondition : ",oneCondition)
 			resultElement := match.QueueSuccess.NewResult()
 			match.Log.Info("newr ResultElement struct")
@@ -493,7 +499,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			groupIdsArr := make( map[int]int)
 			playerIdsArr:= make( map[int]int)
 			for _,groupId := range oneCondition{
-				match.successConditionAddOneGroup( resultElement.Id,groupId,teamId,groupIdsArr,playerIdsArr)
+				match.successConditionAddOneGroup( redisConnFD,resultElement.Id,groupId,teamId,groupIdsArr,playerIdsArr)
 			}
 
 			//zlib.MyPrint("groupIdsArr",groupIdsArr,"playerIdsArr",playerIdsArr)
@@ -502,13 +508,13 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			resultElement.Teams = []int{teamId}
 			//zlib.MyPrint("resultElement",resultElement)
 			match.Log.Info("QueueSuccess.addOne",resultElement)
-			match.QueueSuccess.addOne( resultElement,match.Push)
-
+			match.QueueSuccess.addOne( redisConnFD,resultElement,match.Push)
+			myredis.Exec(redisConnFD)
 		}
 	}else{//组队互相PK
 		match.Log.Debug("case : RuleFlagTeamVS")
 		if length == 1{
-			match.groupPushBackCondition(successGroupIds[0])
+			match.groupPushBackCondition(redisConnFD,successGroupIds[0])
 			mylog.Notice("successGroupIds length = 1 , break")
 			match.Log.Notice("successGroupIds length = 1 , break")
 			return
@@ -518,7 +524,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			//组队PK，肯定是至少有2个组，如果出现奇数，证明肯定最后一个不能用了
 			//把最后一个数，塞回到redis里，再清空这个数
 			index := len(successGroupIds)-1
-			match.groupPushBackCondition(successGroupIds[index])
+			match.groupPushBackCondition(redisConnFD,successGroupIds[index])
 			successGroupIds[index] = nil
 			length--
 		}
@@ -535,6 +541,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 				continue
 			}
 			if i % 2 == 0{
+				myredis.Multi(redisConnFD )
 				resultElement = match.QueueSuccess.NewResult()
 				teamId = 1
 				groupIdsArr = make( map[int]int)
@@ -544,7 +551,7 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 			}
 
 			for _,groupId := range successGroupIds[i]{
-				match.successConditionAddOneGroup(resultElement.Id,groupId,teamId,groupIdsArr,playerIdsArr)
+				match.successConditionAddOneGroup(redisConnFD,resultElement.Id,groupId,teamId,groupIdsArr,playerIdsArr)
 			}
 
 			resultElement.GroupIds = zlib.MapCovertArr(groupIdsArr)
@@ -555,7 +562,8 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 				teamIds := []int{1,2}
 				resultElement.Teams = teamIds
 				match.Log.Info("QueueSuccess.addOne",resultElement)
-				match.QueueSuccess.addOne(resultElement ,match.Push)
+				match.QueueSuccess.addOne(redisConnFD,resultElement ,match.Push)
+				myredis.Exec(redisConnFD )
 			}
 		}
 		//zlib.ExitPrint(123123)
@@ -565,14 +573,15 @@ func  (match *Match)successConditions( successGroupIds map[int]map[int]int){
 }
 //取出来的groupIds 可能某些原因 最终并没有用上，但是得给塞回到redis里
 //这里其实只是将index数据补充上即可，因为计算的时候，删的也只是索引值
-func (match *Match)groupPushBackCondition(oneCondition map[int]int){
+func (match *Match)groupPushBackCondition(redisConn redis.Conn,oneCondition map[int]int){
 	mylog.Info("groupPushBackCondition")
 	match.Log.Info("groupPushBackCondition", oneCondition)
-	for _,v := range oneCondition{
-		match.QueueSign.addOneGroupIndex(v)
+	for _,groupId := range oneCondition{
+		group := match.QueueSign.getGroupElementById(groupId)
+		match.QueueSign.addOneGroupIndex(redisConn,groupId,group.Person,group.Weight)
 	}
 }
-func (match *Match)successConditionAddOneGroup( resultId int,groupId int,teamId int,groupIdsArr  map[int]int ,playerIdsArr map[int]int)Group{
+func (match *Match)successConditionAddOneGroup( redisConnFD redis.Conn,resultId int,groupId int,teamId int,groupIdsArr  map[int]int ,playerIdsArr map[int]int)Group{
 	mylog.Info("successConditionAddOneGroup")
 	match.Log.Info("successConditionAddOneGroup")
 	group := match.QueueSign.getGroupElementById( groupId )
@@ -593,10 +602,10 @@ func (match *Match)successConditionAddOneGroup( resultId int,groupId int,teamId 
 	//fmt.Printf("%+v",SuccessGroup)
 	//zlib.ExitPrint(222)
 	match.Log.Info("addOneGroup",SuccessGroup)
-	match.QueueSuccess.addOneGroup(SuccessGroup)
+	match.QueueSuccess.addOneGroup(redisConnFD,SuccessGroup)
 
 	match.Log.Notice("delSingOldGroup",groupId)
-	match.QueueSign.delOneRuleOneGroup(groupId,0)
+	match.QueueSign.delOneRuleOneGroup(redisConnFD,groupId,0)
 	for _,player := range group.Players{
 		playerStatusElement,isEmpty := playerStatus.GetById(player.Id)
 		var newPlayerStatusElement PlayerStatusElement
@@ -607,8 +616,13 @@ func (match *Match)successConditionAddOneGroup( resultId int,groupId int,teamId 
 		}
 		newPlayerStatusElement.Status = PlayerStatusSuccess
 		newPlayerStatusElement.SuccessTimeout = group.SuccessTimeout
+		newPlayerStatusElement.GroupId = group.Id
 
-		playerStatus.upInfo(playerStatusElement)
+		//queueSign.Log.Info("playerStatus.upInfo:" ,PlayerStatusSign)
+		playerStatus.upInfo(  newPlayerStatusElement , redisConnFD)
+
+		//tmp process
+		//playerStatus.upInfo(playerStatusElement)
 		//match.Log.Info("playerStatus.upInfo ", "oldStatus : ",PlayerStatusElement.Status,"newStatus : ",newPlayerStatusElement.Status)
 	}
 	//zlib.MyPrint( "add one group : ")

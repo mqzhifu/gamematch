@@ -29,9 +29,11 @@ type PlayerWeight struct {
 	ScoreMax	int		//权重值范围：最大值，范围： 1-100
 	AutoAssign	bool	//当权重值范围内，没有任何玩家，是否接收，自动调度分配，这样能提高匹配成功率
 	Formula		string	//属性计算公式，由玩家的N个属性，占比，最终计算出权重值
-	Aggregation string  //sum average min max
-	//Flag		int		//1、计算权重平均的区间的玩家，2、权重越高的匹配越快
+	Aggregation string  //sum average min max 默认为：average
 }
+//Flag		int		//1、计算权重平均的区间的玩家，2、权重越高的匹配越快
+
+
 
 type GamesMatchConfig struct {
 	Id 		int		`json:"id"`
@@ -41,7 +43,8 @@ type GamesMatchConfig struct {
 	MatchCode  string `json:"match_code"`  //匹配代码
 	TeamType   int    `json:"team_type"`   //团队类型 1各自为战 2对称团队战
 	MaxPlayers int    `json:"max_players"` //匹配最大人数 如团队战代表每个队伍人数
-	Rule       PlayerWeight `json:"rule"`        //表达式匹配规则
+	Rule	   string `json:"rule"`
+	//RuleStruct PlayerWeight `json:"rule_struct"`        //表达式匹配规则
 	Timeout    int    `json:"timeout"`     //匹配超时时间
 	Fps        int    `json:"fps"`         //帧率
 	SuccessTimeout int `json:"success_timeout"`
@@ -61,7 +64,8 @@ func (ruleConfig *RuleConfig) getRedisIncKey()string{
 }
 
 //初始化
-func   NewRuleConfig (gamematch *Gamematch)(*RuleConfig,error){
+func   NewRuleConfig (gamematch *Gamematch,monitorRuleIds []int)(*RuleConfig,error){
+	mylog.Info("NewRuleConfig , monitorRuleIds: ",monitorRuleIds)
 	rule := new (RuleConfig)
 	rule.Data = make(map[int]Rule)
 	//zlib.MyPrint("NewRuleConfig",len(res))
@@ -69,21 +73,37 @@ func   NewRuleConfig (gamematch *Gamematch)(*RuleConfig,error){
 	if len(ruleList) <= 0 {
 		return rule,myerr.NewErrorCode(601)
 	}
+	if(len(monitorRuleIds) > 0 ){
+		monitorRule  :=  make( map[int]Rule)
+		for _,rule := range ruleList{
+			for _,monitorRuleId := range monitorRuleIds{
+				if rule.Id == monitorRuleId{
+					monitorRule[rule.Id] = rule
+					break
+				}
+			}
+		}
+		ruleList = monitorRule
+	}
+	if len(ruleList) <= 0 {
+		return rule,myerr.NewErrorCode(625)
+	}
 
-	mylog.Info("rule cnt : ",len(ruleList))
+	mylog.Info("rule final cnt : ",len(ruleList))
 	for _,v := range ruleList{
 		mylog.Info("match code : ",v.CategoryKey)
 	}
 	rule.gamematch = gamematch
 	rule.Data = ruleList
+	zlib.AddRoutineList("watchEtcdChange")
 	go rule.watchEtcdChange()
 	return rule,nil
 }
 
 func (ruleConfig *RuleConfig)watchEtcdChange( ){
-	prefix := "etcd watching"
+	prefix := "rule etcd watching"
 	watchChann := myetcd.Watch(RuleEtcdConfigPrefix)
-	mylog.Notice(prefix , " , new key : ",RuleEtcdConfigPrefix)
+	//mylog.Notice(prefix , " , new key : ",RuleEtcdConfigPrefix)
 	//watchChann := myetcd.Watch("/testmatch")
 	for wresp := range watchChann{
 		for _, ev := range wresp.Events{
@@ -154,9 +174,14 @@ func (ruleConfig *RuleConfig)delOne(ruleId int){
 	queueSuccess.delOneRule()
 
 	playerIds := playerStatus.getOneRuleAllPlayer(ruleId)
+
+	redisConnFD := myredis.GetNewConnFromPool()
+	defer redisConnFD.Close()
+	myredis.Send(redisConnFD,"Multi")
 	for _,playerId := range playerIds{
-		playerStatus.delOneById(zlib.Atoi(playerId))
+		playerStatus.delOneById(redisConnFD,zlib.Atoi(playerId))
 	}
+	myredis.ConnDo(redisConnFD,"exec")
 }
 
 func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,err error){
@@ -180,7 +205,14 @@ func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,
 	if gamesMatchConfig.Status != RuleStatusOnline{
 		return rule,myerr.NewErrorCode(624)
 	}
-
+	gamesMatchConfigRuleStruct := PlayerWeight{}
+	if gamesMatchConfig.Rule != "" {
+		err := json.Unmarshal([]byte(gamesMatchConfig.Rule),&gamesMatchConfigRuleStruct)
+		if err != nil{
+			//zlib.MyPrint(err)
+			mylog.Error("json.Unmarshal gamesMatchConfig.rule failed....",gamesMatchConfig.Rule,err.Error())
+		}
+	}
 	//playerWeightRow := PlayerWeight{}
 	rule  = Rule{
 		Id: gamesMatchConfig.Id,
@@ -194,7 +226,7 @@ func (ruleConfig *RuleConfig)parseOneConfigByEtcd(k string ,v string)(rule Rule,
 		TeamVSPerson:gamesMatchConfig.MaxPlayers / 2,
 		PersonCondition: gamesMatchConfig.MaxPlayers,
 		GroupPersonMax : gamesMatchConfig.MaxPlayers / 2,
-		PlayerWeight: gamesMatchConfig.Rule,
+		PlayerWeight: gamesMatchConfigRuleStruct,
 	}
 	//zlib.MyPrint("parseOneConfigByEtcd:",gamesMatchConfig)
 	return rule,err
@@ -259,7 +291,10 @@ func (ruleConfig *RuleConfig)getByEtcd()  map[int]Rule{
 		ruleList[ruleRow.Id] = ruleRow
 		//i++
 	}
-	//zlib.ExitPrint(ruleList)
+	//for k,v := range ruleList{
+	//	zlib.MyPrint(k,v)
+	//}
+	//zlib.ExitPrint(1111)
 	return ruleList
 
 }
@@ -404,6 +439,8 @@ func (ruleConfig *RuleConfig) CheckRuleByElement(rule Rule)(bool,error){
 	}
 
 	if rule.GroupPersonMax <= 0{
+		zlib.MyPrint(rule.GroupPersonMax )
+		zlib.ExitPrint(rule)
 		return false,myerr.NewErrorCode(614)
 	}
 

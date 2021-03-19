@@ -8,6 +8,7 @@ type HttpReqSign struct {
 	PlayerList	[]HttpReqPlayer	`json:"playerList"`
 	Addition	string	`json:"addition"`
 	RuleId 		int 	`json:"ruleId"`
+	Rule_ver	int		`json:"rule_ver"`
 }
 
 type HttpReqPlayer struct {

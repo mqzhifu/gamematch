@@ -57,21 +57,31 @@ func (playerStatus *PlayerStatus) getRulePlayerPrefixById(ruleId int)string{
 	return playerStatus.getRedisPrefixKey() + "rule" + redisSeparation + strconv.Itoa(ruleId)
 }
 //索引，一个rule里包含的玩家信息，主要用于批量删除，也可用做一个rule的当前所有玩家列表
-func (playerStatus *PlayerStatus) addOneRulePlayer(playerId int ,ruleId int){
+func (playerStatus *PlayerStatus) addOneRulePlayer(redisConn redis.Conn ,playerId int ,ruleId int){
 	key := playerStatus.getRulePlayerPrefixById(ruleId)
-	res,err := myredis.RedisDo("zadd",redis.Args{}.Add(key).Add(0).Add(playerId)...)
+	res,err := myredis.Send(redisConn,"zadd",redis.Args{}.Add(key).Add(0).Add(playerId)...)
+	//res,err := myredis.RedisDo("zadd",redis.Args{}.Add(key).Add(0).Add(playerId)...)
 	mylog.Info("addRulePlayer:",res,err)
 }
 
-func (playerStatus *PlayerStatus) delOneRulePlayer(playerId int ,ruleId int){
+func (playerStatus *PlayerStatus) delOneRulePlayer(redisConn redis.Conn ,playerId int ,ruleId int){
 	key := playerStatus.getRulePlayerPrefixById(ruleId)
-	res,err := myredis.RedisDo("zrem",redis.Args{}.Add(key).Add(playerId)...)
+	res,err := myredis.Send(redisConn,"zrem",redis.Args{}.Add(key).Add(playerId)...)
+	//res,err := myredis.RedisDo("zrem",redis.Args{}.Add(key).Add(playerId)...)
 	mylog.Info("delOneRulePlayer:",res,err)
 }
 func (playerStatus *PlayerStatus) getOneRuleAllPlayer( ruleId int)[]string{
 	key := playerStatus.getRulePlayerPrefixById(ruleId)
 	//ZRANGEBYSCORE salary -inf +inf WITHSCORES
 	res,err := redis.Strings( myredis.RedisDo("ZRANGEBYSCORE",redis.Args{}.Add(key).Add("-inf").Add("+inf")...))
+	mylog.Info("getOneRuleAllPlayer:",res,err)
+	return res
+}
+
+func (playerStatus *PlayerStatus) getOneRuleAllPlayerCnt( ruleId int)int{
+	key := playerStatus.getRulePlayerPrefixById(ruleId)
+	//ZRANGEBYSCORE salary -inf +inf WITHSCORES
+	res,err := redis.Int( myredis.RedisDo("ZCOUNT",redis.Args{}.Add(key).Add("-inf").Add("+inf")...))
 	mylog.Info("getOneRuleAllPlayer:",res,err)
 	return res
 }
@@ -92,25 +102,26 @@ func (playerStatus *PlayerStatus)GetById(playerId int)(playerStatusElement Playe
 	return playerStatusElement,0
 }
 
-func  (playerStatus *PlayerStatus)  upInfo( newPlayerStatusElement PlayerStatusElement)(bool ,error){
+func  (playerStatus *PlayerStatus)  upInfo( newPlayerStatusElement PlayerStatusElement,redisConnFD redis.Conn)(bool ,error){
 	//fmt.Printf("%+v , %+v \n",playerStatusElement,newPlayerStatusElement)
 	//queueSign.Log.Info("upInfo status , old :",playerStatusElementMap[player.Id].Status ,  " , new : ",newPlayerStatusElement.Status )
 	//mylog.Info("action Upinfo , old status :",playerStatusElement.Status , " new status :" ,newPlayerStatusElement.Status)
 
-	oldPlayerStatusElement,isEmpty := playerStatus.GetById(newPlayerStatusElement.PlayerId)
-	oldPlayerStatusElement.UTime = 0 //先置0，方便下面两个结构体比较
-	if isEmpty == 1{
-		mylog.Info("playerStatus add new One")
-	}else{
-		if oldPlayerStatusElement == newPlayerStatusElement{
-			return false,myerr.NewErrorCode(458)
-		}
-		mylog.Info("playerStatus up One")
-	}
-	playerStatus.delOneRulePlayer(newPlayerStatusElement.PlayerId,newPlayerStatusElement.RuleId)
-	playerStatus.addOneRulePlayer(newPlayerStatusElement.PlayerId,newPlayerStatusElement.RuleId)
+	//oldPlayerStatusElement,isEmpty := playerStatus.GetById(newPlayerStatusElement.PlayerId)
+	//oldPlayerStatusElement.UTime = 0 //先置0，方便下面两个结构体比较
+	//if isEmpty == 1{
+	//	mylog.Info("playerStatus add new One")
+	//}else{
+	//	if oldPlayerStatusElement == newPlayerStatusElement{
+	//		return false,myerr.NewErrorCode(458)
+	//	}
+	//	mylog.Info("playerStatus up One")
+	//}
+	playerStatus.delOneRulePlayer(redisConnFD,newPlayerStatusElement.PlayerId,newPlayerStatusElement.RuleId)
+	playerStatus.addOneRulePlayer(redisConnFD,newPlayerStatusElement.PlayerId,newPlayerStatusElement.RuleId)
+
 	newPlayerStatusElement.UTime = zlib.GetNowTimeSecondToInt()
-	playerStatus.setInfo(newPlayerStatusElement)
+	playerStatus.setInfo(redisConnFD,newPlayerStatusElement)
 
 	return true,nil
 }
@@ -132,13 +143,14 @@ func (playerStatus *PlayerStatus)strToStruct(str string)PlayerStatusElement{
 	return playerStatusElement
 }
 
-func  (playerStatus *PlayerStatus) setInfo(playerStatusElement PlayerStatusElement ){
+func  (playerStatus *PlayerStatus) setInfo(conn redis.Conn,playerStatusElement PlayerStatusElement ){
 	key := playerStatus.getRedisStatusPrefixByPid(playerStatusElement.PlayerId)
-	res,err  := myredis.RedisDo("HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
+	res,err  := myredis.Send(conn,"HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
+	//res,err  := myredis.RedisDo("HMSET",redis.Args{}.Add(key).AddFlat(&playerStatusElement)...)
 	mylog.Info("playerStatus setInfo : ",playerStatusElement,res,err)
 }
-
-func (playerStatus *PlayerStatus)  delOneById(playerId int){
+//tmp process
+func (playerStatus *PlayerStatus)  delOneById(redisConn redis.Conn,playerId int){
 	playerStatusElement,isEmpty := playerStatus.GetById(playerId)
 	if isEmpty == 1{
 		mylog.Error(" getByid is empty!!!")
@@ -148,7 +160,9 @@ func (playerStatus *PlayerStatus)  delOneById(playerId int){
 	res,_ := myredis.RedisDo("del",key)
 	mylog.Notice("playerStatus delOneById , id : ",playerId , " , rs : ", res)
 
-	playerStatus.delOneRulePlayer(playerId,playerStatusElement.RuleId)
+	playerStatus.delOneRulePlayer(redisConn,playerId,playerStatusElement.RuleId)
+	//启用事务后，这里先做 个补救
+	myredis.RedisDo("ping")
 }
 //删除所有玩家状态值
 func  (playerStatus *PlayerStatus)  delAllPlayers(){
@@ -163,6 +177,42 @@ func (playerStatus *PlayerStatus) checkSignTimeout(rule Rule,playerStatusElement
 		return true
 	}
 	return false
+}
+
+func  (playerStatus *PlayerStatus)  getAllPlayers()(list map[int]PlayerStatusElement,err error){
+	mylog.Warning("getAllPlayers ")
+	key := playerStatus.getRedisPrefixKey()
+	keys := key + "*"
+
+	res,err := redis.Strings(  myredis.RedisDo("keys",keys))
+	if err != nil{
+		zlib.ExitPrint("redis keys err :",err.Error())
+	}
+	mylog.Debug("all element will num :",len(res))
+	if len(res) <= 0 {
+		mylog.Notice(" keys is null,no need del...")
+		return list,err
+	}
+	list = make(map[int]PlayerStatusElement)
+	for _,p_key := range res{
+		//onePlayerRedis,err := myredis.RedisDo("get",v)
+		//zlib.ExitPrint(onePlayerRedis)
+		//mylog.Debug("get one ",v , " ,  onePlayerRedis ",onePlayerRedis , " , err : ",err)
+		zlib.MyPrint(p_key)
+		if strings.Index(p_key, "rule") != -1{
+			continue
+		}
+		res ,err := redis.Values(myredis.RedisDo("HGETALL",p_key))
+		if err != nil{
+			zlib.ExitPrint("get oneplay error")
+		}
+		playerStatusElement := PlayerStatusElement{}
+		if err := redis.ScanStruct(res, &playerStatusElement); err != nil {
+			zlib.ExitPrint("get oneplay error 2", p_key,err)
+		}
+		list[playerStatusElement.PlayerId] = playerStatusElement
+	}
+	return list,err
 }
 
 //func (playerStatus *PlayerStatus)  delOne(playerStatusElement PlayerStatusElement){

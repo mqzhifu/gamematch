@@ -2,6 +2,7 @@ package gamematch
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"zlib"
 )
@@ -85,9 +86,25 @@ func  (httpd *Httpd)clearRuleByCodeHandler(postDataMap map[string]interface{})(c
 	httpd.Gamematch.RuleConfig.delOne(ruleId)
 	return code,msg
 }
-
+func  (httpd *Httpd)normalMetrics()(code int ,msg interface{}){
+	data := mymetrics.GetAll()
+	data["goroutine"] = runtime.NumGoroutine()
+	return 200,data
+}
+func  (httpd *Httpd)redisMetrics()(code int ,msg interface{}){
+	//rulelist map[int]Rule ,list map[int]map[string]int,playerCnt
+	rulelist,list,playerCnt,rulePersonNum := httpd.Gamematch.RedisMetrics()
+	data := make(map[string]interface{})
+	data["ruleList"] = rulelist
+	data["ruleTotal"] = list
+	data["playerStatus"] = playerCnt
+	data["ruleSignPerson"] = rulePersonNum
+	return 200,data
+}
 //报名 - 添加匹配玩家
 func  (httpd *Httpd)signHandler( postJsonStr string)(code int ,msg interface{}){
+	mymetrics.IncNode("httpSignReq")
+
 	httpd.Log.Info(" routing in signHandler : ")
 	if postJsonStr == ""{
 		errs := myerr.NewErrorCode(802)

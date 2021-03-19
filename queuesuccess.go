@@ -10,17 +10,16 @@ import (
 
 type Result	 struct {
 	Id 			int
-	ATime		int		//匹配成功的时间
-	Timeout		int		//多少秒后无人来取，即超时，更新用户状态，删除数据
+	RuleId		int
+	MatchCode	string
+	ATime		int			//匹配成功的时间
+	Timeout		int			//多少秒后无人来取，即超时，更新用户状态，删除数据
 	Teams		[]int		//该结果，有几个 队伍，因为每个队伍是一个集合，要用来索引
 	PlayerIds	[]int
 	GroupIds	[]int
 	PushId		int
-	Groups		[]Group
-	//Players 	[]Player
-	PushElement	PushElement
-	RuleId		int
-	MatchCode	string
+	Groups		[]Group		//该结果下包含的两个组详细信息，属性挂载，用于push payload
+	PushElement	PushElement	//该结果下推送的详细信息，属性挂载
 }
 
 type QueueSuccess struct {
@@ -40,12 +39,16 @@ func NewQueueSuccess(rule Rule , gamematch *Gamematch  )*QueueSuccess{
 func (queueSuccess *QueueSuccess)NewResult( )Result{
 	result := Result{
 		Id 		: queueSuccess.GetResultIncId( ),
+		RuleId	: queueSuccess.Rule.Id,
+		MatchCode: queueSuccess.Rule.CategoryKey,
 		ATime	: zlib.GetNowTimeSecondToInt(),
 		Timeout	: zlib.GetNowTimeSecondToInt() + queueSuccess.Rule.SuccessTimeout,
 		Teams	: nil,
 		GroupIds: nil,
 		PlayerIds : nil,
-		MatchCode: queueSuccess.Rule.CategoryKey,
+		PushId	: 0 ,
+		//Groups
+		//PushElement
 	}
 	return result
 }
@@ -55,6 +58,7 @@ func (queueSuccess *QueueSuccess) getRedisPrefixKey( )string{
 }
 //不同的匹配池(规则)，要有不同的KEY
 func (queueSuccess *QueueSuccess) getRedisCatePrefixKey(  )string{
+	zlib.MyPrint(queueSuccess.Rule)
 	return queueSuccess.getRedisPrefixKey()+redisSeparation + queueSuccess.Rule.CategoryKey
 }
 func (queueSuccess *QueueSuccess) getRedisKeyResultPrefix()string{
@@ -90,7 +94,8 @@ func (queueSuccess *QueueSuccess) GetResultById( id int ,isIncludeGroupInfo int 
 	}
 
 	result = queueSuccess.strToStruct(res)
-
+	//fmt.Printf("%+v",result)
+	//zlib.ExitPrint(result)
 	if isIncludeGroupInfo == 1{
 		var groups []Group
 		for _,v :=range result.GroupIds{
@@ -101,6 +106,7 @@ func (queueSuccess *QueueSuccess) GetResultById( id int ,isIncludeGroupInfo int 
 	}
 
 	if isIncludePushInfo == 1{
+		//zlib.ExitPrint(result.RuleId)
 		push := queueSuccess.Gamematch.getContainerPushByRuleId(result.RuleId)
 		result.PushElement = push.getById(result.PushId)
 	}
@@ -126,77 +132,93 @@ func (queueSuccess *QueueSuccess) GetResultIncId(  )  int{
 	return res
 }
 //添加一条匹配成功记录
-func  (queueSuccess *QueueSuccess)addOne(result Result,push *Push) {
+func  (queueSuccess *QueueSuccess)addOne( redisConn redis.Conn, result Result,push *Push) {
+	mymetrics.IncNode("matchingSuccess")
+
 	queueSuccess.Log.Info("func : addOne")
 	//zlib.ExitPrint(result)
 	//添加元素超时信息
 	key := queueSuccess.getRedisKeyTimeout()
-	res,err := myredis.RedisDo("zadd",redis.Args{}.Add(key).Add(result.Timeout).Add(result.Id)...)
+	res,err := myredis.Send(redisConn,"zadd",redis.Args{}.Add(key).Add(result.Timeout).Add(result.Id)...)
+	//res,err := myredis.RedisDo("zadd",redis.Args{}.Add(key).Add(result.Timeout).Add(result.Id)...)
 	queueSuccess.Log.Info("add timeout index rs : ",res,err)
-
+	//这里注意下：pushId = 0
 	resultStr := queueSuccess.structToStr(result)
 	payload := strings.Replace(resultStr,separation,PayloadSeparation,-1)
-	pushId := push.addOnePush(result.Id,PushCategorySuccess,payload)
+	pushId := push.addOnePush(redisConn,result.Id,PushCategorySuccess,payload)
 	result.PushId = pushId
 	queueSuccess.Log.Info("addOnePush , newId : ",pushId)
 	//添加一条元素
 	key = queueSuccess.getRedisKeyResult(result.Id)
+	//这里还得重新再  to str 一下，因为pushid 已经可以拿到了
 	str := queueSuccess.structToStr(result)
-	//zlib.ExitPrint("str",str)
-	res,err = myredis.RedisDo("set",redis.Args{}.Add(key).Add(str) ...)
+	res,err = myredis.Send(redisConn,"set",redis.Args{}.Add(key).Add(str) ...)
 	queueSuccess.Log.Info("add successResult rs : ",res,err)
 
 }
 //一条匹配成功记录，要包括N条组信息，这是添加一个组的记录
-func  (queueSuccess *QueueSuccess)addOneGroup( group Group){
+func  (queueSuccess *QueueSuccess)addOneGroup( redisConn redis.Conn,group Group){
 	key := queueSuccess.getRedisKeyGroup(group.Id)
 	content := GroupStructToStr(group)
-	res,err := myredis.RedisDo("set",redis.Args{}.Add(key).Add(content)...)
-	zlib.MyPrint("add addOneGroup : ",res,err)
+	res,err := myredis.Send(redisConn,"set",redis.Args{}.Add(key).Add(content)...)
+	//res,err := myredis.RedisDo("set",redis.Args{}.Add(key).Add(content)...)
+	queueSuccess.Log.Info("addOneGroup  success ",res,err)
 }
 
-func  (queueSuccess *QueueSuccess)delOneGroup( groupId int){
+func  (queueSuccess *QueueSuccess)delOneGroup( redisConn redis.Conn,groupId int){
 	key := queueSuccess.getRedisKeyGroup(groupId)
-	res,err := myredis.RedisDo("del",redis.Args{}.Add(key).Add(key)...)
+	res,err := myredis.Send(redisConn,"del",redis.Args{}.Add(key).Add(key)...)
+	//res,err := myredis.RedisDo("del",redis.Args{}.Add(key).Add(key)...)
 	mylog.Info("success delOneGroup : ",res,err)
 	queueSuccess.Log.Info("delOneGroup",groupId,res,err)
 }
 
 func (queueSuccess *QueueSuccess)  strToStruct(redisStr string )Result{
 	strArr := strings.Split(redisStr,separation)
-	Teams := strings.Split(strArr[3],IdsSeparation)
-	PlayerIds := strings.Split(strArr[4],IdsSeparation)
-	GroupIds := strings.Split(strArr[5],IdsSeparation)
-
+	//zlib.MyPrint(strArr)
+	//fmt.Printf("%+v",strArr)
+	//zlib.ExitPrint(1111122223333)
+	Teams := strings.Split(strArr[5],IdsSeparation)
+	PlayerIds := strings.Split(strArr[6],IdsSeparation)
+	GroupIds := strings.Split(strArr[7],IdsSeparation)
+	//zlib.ExitPrint(Teams, PlayerIds, GroupIds)
 	result := Result{
-		Id:zlib.Atoi(strArr[0]),
-		Timeout 	:	zlib.Atoi(strArr[1]),
-		ATime 	:	zlib.Atoi(strArr[2]),
+		Id:		zlib.Atoi(strArr[0]),
+		RuleId:	zlib.Atoi(strArr[1]),
+		MatchCode: strArr[2],
+		ATime:	zlib.Atoi(strArr[3]),
+		Timeout:zlib.Atoi(strArr[4]),
 		Teams : zlib.ArrStringCoverArrInt(Teams),
-		PlayerIds : zlib.ArrStringCoverArrInt(PlayerIds),
-		GroupIds :  zlib.ArrStringCoverArrInt(GroupIds),
-		PushId: zlib.Atoi(strArr[6]),
-		MatchCode: strArr[7],
+		PlayerIds: zlib.ArrStringCoverArrInt(PlayerIds),
+		GroupIds:  zlib.ArrStringCoverArrInt(GroupIds),
+		PushId: zlib.Atoi(strArr[8]),
 	}
+	//fmt.Printf("%+v",result)
 	return result
 }
 
 func (queueSuccess *QueueSuccess) structToStr(result Result)string{
 	//fmt.Printf("%+v",result)
+	//PushId		int
+	//Groups		[]Group		//该结果下包含的两个组详细信息，属性挂载，用于push payload
+	//PushElement	PushElement	//该结果下推送的详细信息，属性挂载
+
 	TeamsStr := zlib.ArrCoverStr(result.Teams,IdsSeparation)
 	PlayerIds := zlib.ArrCoverStr(result.PlayerIds,IdsSeparation)
 	GroupIds :=  zlib.ArrCoverStr(result.GroupIds,IdsSeparation)
 
 	content :=
 		strconv.Itoa( result.Id) + separation +
+		strconv.Itoa( result.RuleId)+separation +
+		result.MatchCode + separation +
 		strconv.Itoa( result.ATime) + separation +
 		strconv.Itoa( result.Timeout) + separation +
 		TeamsStr + separation +
 		PlayerIds + separation +
 		GroupIds + separation +
-		strconv.Itoa( result.PushId)+separation +
-			result.MatchCode
-
+		strconv.Itoa( result.PushId) + separation
+		//Groups		[]Group			这两个是挂载的，先不管
+		//PushElement	PushElement		这两个是挂载的，先不管
 	return content
 }
 
@@ -258,11 +280,12 @@ func  (queueSuccess *QueueSuccess)   delOneRule(){
 //	queueSuccess.Push.delOneRule()
 //}
 
-func (queueSuccess *QueueSuccess)  delOneResult( id int,isIncludeGroupInfo int ,isIncludePushInfo int,isIncludeTimeout int,isIncludePlayerStatus int){
+func (queueSuccess *QueueSuccess)  delOneResult(redisConn redis.Conn, id int,isIncludeGroupInfo int ,isIncludePushInfo int,isIncludeTimeout int,isIncludePlayerStatus int){
 	mylog.Info("delOneResult id :",id,isIncludeGroupInfo,isIncludePushInfo,isIncludeTimeout)
 	element := queueSuccess.GetResultById(id,isIncludeGroupInfo,isIncludePushInfo)
 	key := queueSuccess.getRedisKeyResult(id)
-	res,err :=   myredis.RedisDo("del",redis.Args{}.Add(key)... )
+	res,err :=   myredis.Send(redisConn,"del",redis.Args{}.Add(key)... )
+	//res,err :=   myredis.RedisDo("del",redis.Args{}.Add(key)... )
 
 	mylog.Debug(" delOneRuleOneResult res",res,err)
 	queueSuccess.Log.Info(" delOneRuleOneResult res",res,err)
@@ -270,35 +293,40 @@ func (queueSuccess *QueueSuccess)  delOneResult( id int,isIncludeGroupInfo int ,
 	if isIncludePushInfo == 1{
 		push := queueSuccess.Gamematch.getContainerPushByRuleId(element.RuleId)
 		queueSuccess.Log.Info("delOnePush",element.PushId)
-		push.delOnePush(element.PushId)
+		push.delOnePush(redisConn,element.PushId)
 	}
 
 	if isIncludeTimeout == 1{
 		queueSuccess.Log.Info("delOneTimeout",id)
-		queueSuccess.delOneTimeout(id)
+		queueSuccess.delOneTimeout(redisConn,id)
 	}
 
 	if isIncludeGroupInfo == 1{
 		for _,groupId :=range element.GroupIds{
-			queueSuccess.delOneGroup(groupId)
+			queueSuccess.delOneGroup(redisConn,groupId)
 		}
 	}
 
 	if isIncludeTimeout == 1{
 		for _,playerId := range element.PlayerIds{
 			queueSuccess.Log.Info("playerStatus.delOneById ",playerId)
-			playerStatus.delOneById(playerId)
+			playerStatus.delOneById(redisConn,playerId)
 		}
 	}
 
 }
 
-func (queueSuccess *QueueSuccess)  delOneTimeout( id int){
+func (queueSuccess *QueueSuccess)  delOneTimeout(redisConn  redis.Conn, id int){
 	key := queueSuccess.getRedisKeyTimeout()
-	res,_ :=  myredis.RedisDo("ZREM",redis.Args{}.Add(key).Add(id)... )
+	res,_ :=  myredis.Send(redisConn,"ZREM",redis.Args{}.Add(key).Add(id)... )
+	//res,_ :=  myredis.RedisDo("ZREM",redis.Args{}.Add(key).Add(id)... )
 	mylog.Info(" success delOneTimeout res",res)
 }
-
+func  (queueSuccess *QueueSuccess) GetAllTimeoutCnt()int{
+	key := queueSuccess.getRedisKeyTimeout()
+	res,_ := redis.Int(  myredis.RedisDo("ZCOUNT",redis.Args{}.Add(key).Add("-inf").Add("+inf")...))
+	return res
+}
 func  (queueSuccess *QueueSuccess) CheckTimeout(){
 	keys := queueSuccess.getRedisKeyTimeout()
 	push := queueSuccess.Gamematch.getContainerPushByRuleId(queueSuccess.Rule.Id)
@@ -310,6 +338,8 @@ func  (queueSuccess *QueueSuccess) CheckTimeout(){
 	//		inc = 0
 	//	}
 	//	inc++
+		redisConnFD := myredis.GetNewConnFromPool()
+		defer redisConnFD.Close()
 
 		now := zlib.GetNowTimeSecondToInt()
 		res,err := redis.IntMap(  myredis.RedisDo("ZREVRANGEBYSCORE",redis.Args{}.Add(keys).Add(now).Add("-inf").Add("WITHSCORES")...))
@@ -328,16 +358,19 @@ func  (queueSuccess *QueueSuccess) CheckTimeout(){
 			return
 		}
 		for resultId,_ := range res{
+			myredis.Send(redisConnFD,"multi")
+
 			resultIdInt := zlib.Atoi(resultId)
 			element := queueSuccess.GetResultById(resultIdInt,0,0)
 			queueSuccess.Log.Info("GetResultById",resultIdInt,element)
 			//fmt.Printf("%+v",element)
 			//zlib.ExitPrint(element)
-			queueSuccess.delOneResult(resultIdInt,1,1,1,1)
+			queueSuccess.delOneResult(redisConnFD,resultIdInt,1,1,1,1)
 			payload := queueSuccess.structToStr(element)
 			payload = strings.Replace(payload,separation,PayloadSeparation,-1)
-			push.addOnePush(resultIdInt,PushCategorySuccessTimeout, payload)
+			push.addOnePush(redisConnFD,resultIdInt,PushCategorySuccessTimeout, payload)
 
+			myredis.ConnDo(redisConnFD,"exec")
 			//zlib.ExitPrint(111111111)
 		}
 		//myGosched("success CheckTimeout")

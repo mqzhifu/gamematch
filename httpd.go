@@ -3,6 +3,8 @@ package gamematch
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -60,6 +62,10 @@ func NewHttpd(httpdOption HttpdOption,gamematch *Gamematch)(httpd  *Httpd,err er
 }
 //开启HTTP监听
 func (httpd *Httpd)Start()error{
+	mymetrics.CreateOneNode("httpSignReq")
+	mymetrics.CreateOneNode("httpSignReqSuccess")
+	mymetrics.CreateOneNode("httpSignReqFiled")
+
 	httpd.StartHttpLisnten()
 	//将所有rule的HTTPD请求状态都打开，允许外面访问
 	for k,_:=range httpd.Gamematch.HttpdRuleState{
@@ -90,6 +96,7 @@ func (httpd *Httpd)StartHttpLisnten(){
 
 	httpd.HttpServer = httpServer
 	httpd.Option.Log.Info("httpd start loop:",dns , " Listen : /")
+	zlib.AddRoutineList("httpd ListenAndServe")
 	go func (){
 		err := httpServer.ListenAndServe()
 		if err != nil{
@@ -130,8 +137,8 @@ func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
 			httpd.ResponseStatusCode(w,500,"httpd.GetPostDat" + errs.Error() )
 			return
 		}
-		httpd.Option.Log.Info(GetPostDataMap,errs)
-		httpd.Log.Info(GetPostDataMap,errs)
+		httpd.Option.Log.Info("PostData",GetPostDataMap,errs)
+		httpd.Log.Info("PostData",GetPostDataMap,errs)
 		postDataMap = GetPostDataMap
 		postJsonStr = myJsonStr
 	}else{
@@ -157,8 +164,39 @@ func (httpd *Httpd)RouterHandler(w http.ResponseWriter, r *http.Request){
 	var msg interface{}
 	if uri == "/sign" {//报名
 		code,msg = httpd.signHandler(postJsonStr)
+		if code == 200{
+			mymetrics.IncNode("httpSignReqSuccess")
+		}else{
+			mymetrics.IncNode("httpSignReqFiled")
+		}
 	}else if uri == "/sign/cancel"{//取消报名
 		code,msg = httpd.signCancelHandler(postJsonStr)
+	}else if uri == "/getNormalMetrics"{//取消报名
+		code,msg = httpd.normalMetrics()
+	}else if uri == "/getRedisMetrics"{//取消报名
+		code,msg = httpd.redisMetrics()
+	}else if uri == "/jquery.min.js" { //取消报名
+		//code,msg = httpd.redisMetrics()
+		b, err := ioutil.ReadFile("gamematch/jquery.min.js") // just pass the file name
+		if err != nil {
+			fmt.Print(err)
+		}
+		html := string(b) // convert content to a 'string'
+		w.Header().Set("Content-Length",strconv.Itoa( len(html) ) )
+		//w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(html))
+		return
+	} else if uri == "/metrics.html"{//取消报名
+		//code,msg = httpd.redisMetrics()
+		b, err := ioutil.ReadFile("gamematch/metrics.html") // just pass the file name
+		if err != nil {
+			fmt.Print(err)
+		}
+		html := string(b) // convert content to a 'string'
+		w.Header().Set("Content-Length",strconv.Itoa( len(html) ) )
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(html))
+		return
 	}else if uri == "/rule/add" {//添加一条rule
 		//code,msg = httpd.ruleAddOne(postDataMap)
 	}else if uri == "/getErrorInfo" {//所有错误码列表
@@ -210,13 +248,13 @@ func (httpd *Httpd)ResponseStatusCode(w http.ResponseWriter,code int ,responseIn
 func (httpd *Httpd) GetContentType( r *http.Request)ContentType{
 	//r.Header.Get("Content-Type")
 	contentTypeArr ,ok := r.Header["Content-Type"]
-	httpd.Option.Log.Debug(contentTypeArr)
+	//httpd.Option.Log.Debug(contentTypeArr)
 
 	//正常的请求基本上没这个值，除了 FORM，因为只有传输内容的时候才有意义
 	contentType := ContentType{}
 	if ok {
 		contentType.Name = contentTypeArr[0]
-		httpd.Option.Log.Debug(contentType.Name)
+		//httpd.Option.Log.Debug(contentType.Name)
 		if strings.Index(contentType.Name,"multipart/form-data") != -1{
 			tmpArr := strings.Split(contentType.Name,";")
 			contentType.Addition = strings.TrimSpace(tmpArr[1])
@@ -246,7 +284,7 @@ func GetContentTypeList()[]string{
 }
 
 func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[string]interface{},jsonStr string, err error){
-	httpd.Option.Log.Debug(" getPostData ")
+	//httpd.Option.Log.Debug(" getPostData ")
 	if r.ContentLength == 0{//获取主体数据的长度
 		return data,jsonStr,nil
 	}
@@ -254,11 +292,13 @@ func (httpd *Httpd)GetPostData(r *http.Request,contentType string)( data  map[st
 		case CT_JSON:
 			body := make([]byte, r.ContentLength)
 			r.Body.Read(body)
-			mylog.Debug("body : ",string(body))
+			//mylog.Debug("body : ",string(body))
 
 			jsonDataMap := make(map[string]interface{})
 			errs := json.Unmarshal(body,&jsonDataMap)
-			mylog.Debug("test ",jsonDataMap,errs)
+			if errs != nil{
+				httpd.Log.Error("json.Unmarshal failed , ",body)
+			}
 			return jsonDataMap,string(body),nil
 		case CT_MULTIPART:
 			data = make( map[string]interface{})

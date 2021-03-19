@@ -6,7 +6,7 @@ const (
 	ENV_TEST				= "test"//测试环境
 	ENV_PRE					= "pre"//预发布环境
 	ENV_ONLINE				= "online"//线上环境
-	ENV						= ENV_DEV
+
 
 	//LOG_BASE_DIR 			= "/data/www/golang/src/logs"
 	//LOG_FILE_NAME			= "gamematch"
@@ -23,6 +23,20 @@ const (
 	FormulaFirst			= "<"
 	FormulaEnd				= ">"
 )
+
+func GetEnvList()[]string{
+	list := []string{ENV_DEV,ENV_TEST,ENV_PRE,ENV_ONLINE}
+	return list
+}
+func CheckEnvExist(env string)bool{
+	list := []string{ENV_DEV,ENV_TEST,ENV_PRE,ENV_ONLINE}
+	for _,v :=range list{
+		if v == env{
+			return true
+		}
+	}
+	return false
+}
 /*
 	匹配类型 - 规则
 	1. N人匹配 ，只要满足N人，即成功
@@ -56,10 +70,9 @@ const(
 
 //微服务
 const(
-	SERVICE_PREFIX = "/v1/service"		//微服务前缀
-
+	//SERVICE_PREFIX = "/v1/service"		//微服务前缀
 	SERVICE_MSG_SERVER		="msgServer"
-	SERVICE_MATCH_NAME		="gamematch"
+	//SERVICE_MATCH_NAME		="gamematch"
 )
 
 const (
